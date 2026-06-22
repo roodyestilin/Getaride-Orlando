@@ -25,6 +25,9 @@ type Props = {
   onPickupChange?: (p: LatLng) => void;
   onRouteInfo?: (info: RouteInfo) => void;
   onNavStep?: (step: NavStep) => void;
+  follow?: boolean;
+  recenterKey?: number;
+  onUserPan?: () => void;
 };
 
 const ORLANDO: LatLng = { lat: 28.5384, lng: -81.3789 };
@@ -82,7 +85,7 @@ function fmtDist(m: number): string {
   return `${Math.max(0, Math.round(ft / 50) * 50)} ft`;
 }
 
-export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, onPickupChange, onRouteInfo, onNavStep }: Props) {
+export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -97,6 +100,11 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
   const navStateRef = useRef<NavStep | null>(null);
 
   const navMode = !!(navFrom && navTo);
+  const followRef = useRef(false);
+  followRef.current = !!(navMode && follow);
+  const onUserPanRef = useRef(onUserPan);
+  onUserPanRef.current = onUserPan;
+  const followingRef = useRef(true);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -147,11 +155,16 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     const ANIM_MS = Math.min(30000, Math.max(14000, durationSec * 250));
     const start = performance.now();
     if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat(coords[0] as any).addTo(map);
+    if (followRef.current) {
+      followingRef.current = true;
+      map.easeTo({ center: coords[0] as any, zoom: 15.5, bearing: 0, pitch: 0, padding: { top: 150, bottom: 340, left: 20, right: 20 }, duration: 700 });
+    }
     const frame = (now: number) => {
       const t = Math.min(1, (now - start) / ANIM_MS);
       const traveled = t * total;
       const pos = positionAt(traveled, coords, segCum);
       driverM.current?.setLngLat(pos as any);
+      if (followRef.current && followingRef.current) mapRef.current?.setCenter(pos as any);
       let si = 0;
       while (si < stepEnd.length - 1 && traveled > stepEnd[si]) si++;
       const distToNext = Math.max(0, stepEnd[si] - traveled);
@@ -204,6 +217,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
   const fitBounds = () => {
     const map = mapRef.current;
     if (!map || !autoFit) return;
+    if (navMode && followRef.current) return;
     const pts: LatLng[] = [];
     if (navMode) {
       pts.push(navFrom!, navTo!);
@@ -284,6 +298,12 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
       attributionControl: false,
     });
     mapRef.current = map;
+    map.on("dragstart", () => {
+      if (followRef.current) {
+        followingRef.current = false;
+        onUserPanRef.current?.();
+      }
+    });
     map.on("load", () => {
       loadedRef.current = true;
       map.resize();
@@ -302,7 +322,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     if (mapRef.current && size) mapRef.current.resize();
   }, [size]);
 
-  const depKey = JSON.stringify({ pickup, destination, stops, enrouteFrom, navFrom, navTo });
+  const depKey = JSON.stringify({ pickup, destination, stops, enrouteFrom, navFrom, navTo, follow });
   useEffect(() => {
     updateAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,6 +335,20 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     map.panTo([driver.lng, driver.lat], { duration: 900 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driver?.lat, driver?.lng]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || recenterKey === undefined) return;
+    followingRef.current = true;
+    if (navMode && followRef.current) {
+      const c = driverM.current?.getLngLat();
+      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 15.5, bearing: 0, pitch: 0, padding: { top: 150, bottom: 340, left: 20, right: 20 }, duration: 500 });
+    } else {
+      map.easeTo({ bearing: 0, pitch: 0, duration: 300 });
+      fitBounds();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterKey]);
 
   return (
     <View

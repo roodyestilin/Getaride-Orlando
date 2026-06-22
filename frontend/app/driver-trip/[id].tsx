@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Speech from "expo-speech";
 
 import MapView from "@/src/components/MapView";
 import Avatar from "@/src/components/Avatar";
@@ -42,6 +43,33 @@ export default function DriverTrip() {
   const [navInfo, setNavInfo] = useState<{ distanceText: string; durationText: string } | null>(null);
   const [navStep, setNavStep] = useState<{ instruction: string; distanceText: string; type?: string; modifier?: string } | null>(null);
   const doneRef = useRef(false);
+  const [recenterKey, setRecenterKey] = useState(0);
+  const [voiceOn, setVoiceOn] = useState(true);
+  const voiceOnRef = useRef(true);
+  voiceOnRef.current = voiceOn;
+  const lastSpokenRef = useRef("");
+
+  const handleNavStep = useCallback((step: any) => {
+    setNavStep(step);
+    if (voiceOnRef.current && step.instruction && step.instruction !== lastSpokenRef.current) {
+      lastSpokenRef.current = step.instruction;
+      Speech.stop();
+      Speech.speak(step.instruction);
+    }
+  }, []);
+
+  useEffect(() => () => { Speech.stop(); }, []);
+
+  const recenter = () => {
+    Haptics.selectionAsync().catch(() => {});
+    setRecenterKey((k) => k + 1);
+  };
+  const toggleVoice = () => {
+    setVoiceOn((v) => {
+      if (v) Speech.stop();
+      return !v;
+    });
+  };
 
   const poll = useCallback(async () => {
     if (doneRef.current) return;
@@ -113,22 +141,35 @@ export default function DriverTrip() {
         <MapView
           navFrom={navFrom}
           navTo={navTo}
+          follow={ride.status === "in_progress"}
+          recenterKey={recenterKey}
           onRouteInfo={setNavInfo}
-          onNavStep={setNavStep}
+          onNavStep={handleNavStep}
           style={StyleSheet.absoluteFill}
         />
       ) : (
         <MapView pickup={ride.pickup} destination={ride.destination} style={StyleSheet.absoluteFill} />
       )}
 
+      {navActive ? (
+        <View style={[styles.navControls, { top: insets.top + 118 }]}>
+          <Pressable testID="recenter-btn" onPress={recenter} style={styles.ctrlBtn}>
+            <Ionicons name="locate" size={22} color={colors.brandPrimary} />
+          </Pressable>
+          <Pressable testID="voice-btn" onPress={toggleVoice} style={styles.ctrlBtn}>
+            <Ionicons name={voiceOn ? "volume-high" : "volume-mute"} size={22} color={voiceOn ? colors.brandPrimary : colors.muted} />
+          </Pressable>
+        </View>
+      ) : null}
+
       {navActive && navStep ? (
-        <View style={[styles.navBanner, { top: insets.top + 60 }]} testID="nav-banner">
+        <View style={[styles.navBanner, { top: insets.top + spacing.sm }]} testID="nav-banner">
           <View style={styles.navManeuver}>
             <Ionicons name={maneuverIcon(navStep.type, navStep.modifier)} size={26} color="#fff" />
             {navStep.distanceText ? <Text style={styles.navDist}>{navStep.distanceText}</Text> : null}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.navInstruction} numberOfLines={2}>{navStep.instruction}</Text>
+            <Text style={styles.navInstruction} numberOfLines={1}>{navStep.instruction}</Text>
             {navInfo ? (
               <Text style={styles.navMeta}>
                 {ride.status === "in_progress" ? "To destination" : "To pickup"} · {navInfo.distanceText} · {navInfo.durationText}
@@ -205,7 +246,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#eef1f4" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff", gap: spacing.sm },
   backBtn: { position: "absolute", left: spacing.lg, width: 44, height: 44, borderRadius: 22, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...shadow, zIndex: 5 },
-  navBanner: { position: "absolute", left: spacing.lg, right: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: "#1d4ed8", borderRadius: radius.md, padding: spacing.md, ...shadow, zIndex: 6 },
+  navBanner: { position: "absolute", left: spacing.lg + 52, right: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: "#1d4ed8", borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, ...shadow, zIndex: 6 },
+  navControls: { position: "absolute", right: spacing.lg, gap: spacing.sm, zIndex: 6 },
+  ctrlBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...shadow },
   navManeuver: { alignItems: "center", minWidth: 50 },
   navDist: { fontFamily: font.monoBold, fontSize: 12, color: "#fff", marginTop: 2 },
   navInstruction: { fontFamily: font.bold, fontSize: 16, color: "#fff" },
