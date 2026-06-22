@@ -23,6 +23,15 @@ const STATUS_TEXT: Record<string, string> = {
   in_progress: "Trip in progress",
 };
 
+function maneuverIcon(type?: string, modifier?: string): any {
+  if (type === "arrive") return "flag";
+  if (type === "depart") return "navigate";
+  if (modifier?.includes("left")) return "arrow-back";
+  if (modifier?.includes("right")) return "arrow-forward";
+  if (modifier === "uturn") return "return-down-back";
+  return "arrow-up";
+}
+
 export default function DriverTrip() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -30,6 +39,8 @@ export default function DriverTrip() {
   const [done, setDone] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [navInfo, setNavInfo] = useState<{ distanceText: string; durationText: string } | null>(null);
+  const [navStep, setNavStep] = useState<{ instruction: string; distanceText: string; type?: string; modifier?: string } | null>(null);
   const doneRef = useRef(false);
 
   const poll = useCallback(async () => {
@@ -92,10 +103,40 @@ export default function DriverTrip() {
 
   const waiting = ride.status === "searching";
   const step = NEXT[ride.status];
+  const navActive = ride.status === "accepted" || ride.status === "in_progress";
+  const navFrom = ride.status === "in_progress" ? ride.pickup : ride.assigned_driver?.start;
+  const navTo = ride.status === "in_progress" ? ride.destination : ride.pickup;
 
   return (
     <View style={styles.container}>
-      <MapView pickup={ride.pickup} destination={ride.destination} style={StyleSheet.absoluteFill} />
+      {navActive ? (
+        <MapView
+          navFrom={navFrom}
+          navTo={navTo}
+          onRouteInfo={setNavInfo}
+          onNavStep={setNavStep}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : (
+        <MapView pickup={ride.pickup} destination={ride.destination} style={StyleSheet.absoluteFill} />
+      )}
+
+      {navActive && navStep ? (
+        <View style={[styles.navBanner, { top: insets.top + 60 }]} testID="nav-banner">
+          <View style={styles.navManeuver}>
+            <Ionicons name={maneuverIcon(navStep.type, navStep.modifier)} size={26} color="#fff" />
+            {navStep.distanceText ? <Text style={styles.navDist}>{navStep.distanceText}</Text> : null}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.navInstruction} numberOfLines={2}>{navStep.instruction}</Text>
+            {navInfo ? (
+              <Text style={styles.navMeta}>
+                {ride.status === "in_progress" ? "To destination" : "To pickup"} · {navInfo.distanceText} · {navInfo.durationText}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
 
       <Pressable testID="dt-back" onPress={() => router.replace("/(driver)")} style={[styles.backBtn, { top: insets.top + spacing.sm }]}>
         <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
@@ -164,6 +205,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#eef1f4" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff", gap: spacing.sm },
   backBtn: { position: "absolute", left: spacing.lg, width: 44, height: 44, borderRadius: 22, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...shadow, zIndex: 5 },
+  navBanner: { position: "absolute", left: spacing.lg, right: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: "#1d4ed8", borderRadius: radius.md, padding: spacing.md, ...shadow, zIndex: 6 },
+  navManeuver: { alignItems: "center", minWidth: 50 },
+  navDist: { fontFamily: font.monoBold, fontSize: 12, color: "#fff", marginTop: 2 },
+  navInstruction: { fontFamily: font.bold, fontSize: 16, color: "#fff" },
+  navMeta: { fontFamily: font.regular, fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2 },
   sheet: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: spacing.xl, paddingTop: spacing.md, ...shadow },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.md },
   waiting: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xl },

@@ -5,6 +5,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { colors } from "@/src/theme";
 
 export type LatLng = { lat: number; lng: number; label?: string };
+export type NavStep = { instruction: string; distanceText: string; type?: string; modifier?: string };
+export type RouteInfo = { distanceText: string; durationText: string };
 
 const TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
 mapboxgl.accessToken = TOKEN;
@@ -14,11 +16,15 @@ type Props = {
   destination?: LatLng | null;
   driver?: LatLng | null;
   enrouteFrom?: LatLng | null;
+  navFrom?: LatLng | null;
+  navTo?: LatLng | null;
   stops?: LatLng[];
   style?: any;
   showRoute?: boolean;
   autoFit?: boolean;
   onPickupChange?: (p: LatLng) => void;
+  onRouteInfo?: (info: RouteInfo) => void;
+  onNavStep?: (step: NavStep) => void;
 };
 
 const ORLANDO: LatLng = { lat: 28.5384, lng: -81.3789 };
@@ -26,11 +32,11 @@ const ORLANDO: LatLng = { lat: 28.5384, lng: -81.3789 };
 function makeDriverEl(): HTMLDivElement {
   const el = document.createElement("div");
   el.style.cssText =
-    `width:36px;height:36px;border-radius:18px;background:${colors.surfaceInverse};` +
+    `width:38px;height:38px;border-radius:19px;background:${colors.brandPrimary};` +
     `border:3px solid #fff;display:flex;align-items:center;justify-content:center;` +
-    `box-shadow:0 2px 8px rgba(0,0,0,.35);`;
+    `box-shadow:0 3px 10px rgba(0,0,0,.4);`;
   el.innerHTML =
-    `<svg width="18" height="18" viewBox="0 0 512 512" fill="#fff">` +
+    `<svg width="19" height="19" viewBox="0 0 512 512" fill="#fff">` +
     `<path d="M135.2 117.4 109.1 192H402.9l-26.1-74.6C372.3 104.6 360.2 96 346.6 96H165.4c-13.6 0-25.7 8.6-30.2 21.4zM39.6 196.8 74.8 96.3C88.3 57.8 124.6 32 165.4 32H346.6c40.8 0 77.1 25.8 90.6 64.3l35.2 100.5c23.2 9.6 39.6 32.5 39.6 59.2V400v48c0 17.7-14.3 32-32 32H448c-17.7 0-32-14.3-32-32V400H96v48c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32V400 256c0-26.7 16.4-49.6 39.6-59.2zM128 288a32 32 0 1 0 -64 0 32 32 0 1 0 64 0zm288 32a32 32 0 1 0 0-64 32 32 0 1 0 0 64z"/></svg>`;
   return el;
 }
@@ -59,7 +65,24 @@ function snapToRoute(coords: number[][] | null, lng: number, lat: number): [numb
   return [best[0], best[1]];
 }
 
-export default function MapView({ pickup, destination, driver, enrouteFrom, stops = [], style, showRoute = true, autoFit = true, onPickupChange }: Props) {
+function haversineM(a: number[], b: number[]): number {
+  const R = 6371000;
+  const toR = Math.PI / 180;
+  const dLat = (b[1] - a[1]) * toR;
+  const dLng = (b[0] - a[0]) * toR;
+  const la1 = a[1] * toR;
+  const la2 = b[1] * toR;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(h));
+}
+
+function fmtDist(m: number): string {
+  const ft = m * 3.28084;
+  if (ft > 528) return `${(m / 1609.34).toFixed(1)} mi`;
+  return `${Math.max(0, Math.round(ft / 50) * 50)} ft`;
+}
+
+export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, onPickupChange, onRouteInfo, onNavStep }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -69,10 +92,22 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, stop
   const destM = useRef<mapboxgl.Marker | null>(null);
   const driverM = useRef<mapboxgl.Marker | null>(null);
   const stopMs = useRef<mapboxgl.Marker[]>([]);
+  const animRef = useRef<number | null>(null);
+  const tickRef = useRef<any>(null);
+  const navStateRef = useRef<NavStep | null>(null);
+
+  const navMode = !!(navFrom && navTo);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     if (width > 0 && height > 0) setSize({ w: Math.round(width), h: Math.round(height) });
+  };
+
+  const stopAnim = () => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    animRef.current = null;
+    if (tickRef.current) clearInterval(tickRef.current);
+    tickRef.current = null;
   };
 
   const placeDriver = (lng: number, lat: number) => {
@@ -83,9 +118,128 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, stop
     else driverM.current.setLngLat([sl, sa]);
   };
 
-  const setPickupPin = () => {
+  const positionAt = (traveled: number, coords: number[][], segCum: number[]): number[] => {
+    if (traveled <= 0) return coords[0];
+    const total = segCum[segCum.length - 1];
+    if (traveled >= total) return coords[coords.length - 1];
+    let i = 1;
+    while (i < segCum.length && segCum[i] < traveled) i++;
+    const a = coords[i - 1];
+    const b = coords[i];
+    const segLen = segCum[i] - segCum[i - 1] || 1;
+    const t = (traveled - segCum[i - 1]) / segLen;
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+
+  const startNavAnimation = (coords: number[][], steps: any[], totalM: number, durationSec: number) => {
     const map = mapRef.current;
     if (!map) return;
+    const segCum: number[] = [0];
+    for (let i = 1; i < coords.length; i++) segCum.push(segCum[i - 1] + haversineM(coords[i - 1], coords[i]));
+    const total = segCum[segCum.length - 1] || totalM || 1;
+    const stepEnd: number[] = [];
+    let acc = 0;
+    steps.forEach((s) => {
+      acc += s.distance || 0;
+      stepEnd.push(acc);
+    });
+    onRouteInfo?.({ distanceText: `${(total / 1609.34).toFixed(1)} mi`, durationText: `${Math.max(1, Math.round(durationSec / 60))} min` });
+    const ANIM_MS = Math.min(30000, Math.max(14000, durationSec * 250));
+    const start = performance.now();
+    if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat(coords[0] as any).addTo(map);
+    const frame = (now: number) => {
+      const t = Math.min(1, (now - start) / ANIM_MS);
+      const traveled = t * total;
+      const pos = positionAt(traveled, coords, segCum);
+      driverM.current?.setLngLat(pos as any);
+      let si = 0;
+      while (si < stepEnd.length - 1 && traveled > stepEnd[si]) si++;
+      const distToNext = Math.max(0, stepEnd[si] - traveled);
+      const mv = steps[si]?.maneuver || {};
+      navStateRef.current = {
+        instruction: t >= 1 ? "You have arrived" : mv.instruction || "Proceed to route",
+        distanceText: t >= 1 ? "" : fmtDist(distToNext),
+        type: mv.type,
+        modifier: mv.modifier,
+      };
+      if (t < 1) animRef.current = requestAnimationFrame(frame);
+    };
+    animRef.current = requestAnimationFrame(frame);
+    tickRef.current = setInterval(() => {
+      if (navStateRef.current) onNavStep?.(navStateRef.current);
+    }, 400);
+  };
+
+  const updateRoute = async () => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    stopAnim();
+    if (map.getLayer("route")) map.removeLayer("route");
+    if (map.getLayer("route-bg")) map.removeLayer("route-bg");
+    if (map.getSource("route")) map.removeSource("route");
+    routeRef.current = null;
+    const waypoints = navMode ? [navFrom!, navTo!] : ([enrouteFrom, pickup, ...stops, destination].filter(Boolean) as LatLng[]);
+    if (!showRoute || waypoints.length < 2) return;
+    const path = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${path}?geometries=geojson&overview=full&steps=${navMode}&access_token=${TOKEN}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      const route = json?.routes?.[0];
+      const coords = route?.geometry?.coordinates;
+      if (!coords || !mapRef.current) return;
+      routeRef.current = coords;
+      map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
+      map.addLayer({ id: "route-bg", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": navMode ? 10 : 8 } });
+      map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": navMode ? "#1d4ed8" : colors.brandPrimary, "line-width": navMode ? 6 : 5 } });
+      if (navMode) {
+        const steps = (route.legs || []).flatMap((l: any) => l.steps || []);
+        startNavAnimation(coords, steps, route.distance || 0, route.duration || 0);
+      } else if (driver) {
+        placeDriver(driver.lng, driver.lat);
+      }
+    } catch {}
+  };
+
+  const fitBounds = () => {
+    const map = mapRef.current;
+    if (!map || !autoFit) return;
+    const pts: LatLng[] = [];
+    if (navMode) {
+      pts.push(navFrom!, navTo!);
+    } else {
+      if (pickup) pts.push(pickup);
+      if (destination) pts.push(destination);
+      stops.forEach((s) => pts.push(s));
+      if (enrouteFrom) pts.push(enrouteFrom);
+      if (driver) pts.push(driver);
+    }
+    if (pts.length === 0) return;
+    if (pts.length === 1) {
+      map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 13, duration: 400 });
+      return;
+    }
+    const b = new mapboxgl.LngLatBounds();
+    pts.forEach((p) => b.extend([p.lng, p.lat]));
+    map.fitBounds(b, { padding: { top: 150, bottom: 320, left: 56, right: 56 }, maxZoom: 15, duration: 600 });
+  };
+
+  const updateAll = () => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    if (navMode) {
+      // hide pickup/stops; show target pin at navTo
+      if (pickupM.current) { pickupM.current.remove(); pickupM.current = null; }
+      stopMs.current.forEach((m) => m.remove());
+      stopMs.current = [];
+      if (!destM.current) destM.current = new mapboxgl.Marker({ color: colors.success }).setLngLat([navTo!.lng, navTo!.lat]).addTo(map);
+      else destM.current.setLngLat([navTo!.lng, navTo!.lat]);
+      updateRoute();
+      fitBounds();
+      return;
+    }
+
     if (pickup) {
       if (!pickupM.current) {
         pickupM.current = new mapboxgl.Marker({ color: colors.success, draggable: !!onPickupChange }).setLngLat([pickup.lng, pickup.lat]).addTo(map);
@@ -95,63 +249,12 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, stop
             onPickupChange({ lat: ll.lat, lng: ll.lng });
           });
         }
-      } else {
-        pickupM.current.setLngLat([pickup.lng, pickup.lat]);
-      }
+      } else pickupM.current.setLngLat([pickup.lng, pickup.lat]);
     } else if (pickupM.current) {
       pickupM.current.remove();
       pickupM.current = null;
     }
-  };
 
-  const updateRoute = async () => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-    if (map.getLayer("route")) map.removeLayer("route");
-    if (map.getLayer("route-bg")) map.removeLayer("route-bg");
-    if (map.getSource("route")) map.removeSource("route");
-    routeRef.current = null;
-    if (!showRoute || !pickup || !destination) return;
-    const waypoints = [enrouteFrom, pickup, ...stops, destination].filter(Boolean) as LatLng[];
-    const path = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
-    try {
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${path}?geometries=geojson&overview=full&access_token=${TOKEN}`;
-      const res = await fetch(url);
-      const json = await res.json();
-      const coords = json?.routes?.[0]?.geometry?.coordinates;
-      if (!coords || !mapRef.current) return;
-      routeRef.current = coords;
-      map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
-      map.addLayer({ id: "route-bg", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": 8 } });
-      map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": colors.brandPrimary, "line-width": 5 } });
-      // re-snap driver onto the freshly loaded route
-      if (driver) placeDriver(driver.lng, driver.lat);
-    } catch {}
-  };
-
-  const fitBounds = () => {
-    const map = mapRef.current;
-    if (!map || !autoFit) return;
-    const pts: LatLng[] = [];
-    if (pickup) pts.push(pickup);
-    if (destination) pts.push(destination);
-    stops.forEach((s) => pts.push(s));
-    if (enrouteFrom) pts.push(enrouteFrom);
-    if (driver) pts.push(driver);
-    if (pts.length === 0) return;
-    if (pts.length === 1) {
-      map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 13, duration: 400 });
-      return;
-    }
-    const b = new mapboxgl.LngLatBounds();
-    pts.forEach((p) => b.extend([p.lng, p.lat]));
-    map.fitBounds(b, { padding: { top: 120, bottom: 360, left: 56, right: 56 }, maxZoom: 14, duration: 600 });
-  };
-
-  const updateAll = () => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-    setPickupPin();
     if (destination) {
       if (!destM.current) destM.current = new mapboxgl.Marker({ color: colors.brandPrimary }).setLngLat([destination.lng, destination.lat]).addTo(map);
       else destM.current.setLngLat([destination.lng, destination.lat]);
@@ -172,7 +275,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, stop
 
   useEffect(() => {
     if (!size || !containerRef.current || mapRef.current) return;
-    const center = pickup || destination || ORLANDO;
+    const center = pickup || destination || navFrom || ORLANDO;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
@@ -187,6 +290,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, stop
       updateAll();
     });
     return () => {
+      stopAnim();
       map.remove();
       mapRef.current = null;
       loadedRef.current = false;
@@ -198,7 +302,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, stop
     if (mapRef.current && size) mapRef.current.resize();
   }, [size]);
 
-  const depKey = JSON.stringify({ pickup, destination, stops, enrouteFrom });
+  const depKey = JSON.stringify({ pickup, destination, stops, enrouteFrom, navFrom, navTo });
   useEffect(() => {
     updateAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,7 +310,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, stop
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !driver || !loadedRef.current) return;
+    if (!map || !driver || !loadedRef.current || navMode) return;
     placeDriver(driver.lng, driver.lat);
     map.panTo([driver.lng, driver.lat], { duration: 900 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
