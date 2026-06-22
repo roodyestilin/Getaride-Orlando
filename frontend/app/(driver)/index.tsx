@@ -142,8 +142,22 @@ export default function DriverHome() {
                       <Text style={styles.routeText} numberOfLines={1}>{req.destination.label}</Text>
                     </View>
                   </View>
+                  <View style={styles.metaChips}>
+                    <View style={styles.metaChip}>
+                      <Ionicons name="navigate-outline" size={13} color={colors.brandPrimary} />
+                      <Text style={styles.metaChipText}>{req.pickup_eta_min ?? 5} min to pickup</Text>
+                    </View>
+                    <View style={styles.metaChip}>
+                      <Ionicons name="time-outline" size={13} color={colors.brandPrimary} />
+                      <Text style={styles.metaChipText}>{req.duration_min} min trip</Text>
+                    </View>
+                    <View style={styles.metaChip}>
+                      <Ionicons name="speedometer-outline" size={13} color={colors.brandPrimary} />
+                      <Text style={styles.metaChipText}>{req.distance_miles} mi</Text>
+                    </View>
+                  </View>
                   <View style={styles.reqFooter}>
-                    <Text style={styles.reqMeta}>{req.distance_miles} mi · range ${req.fare_min.toFixed(0)}–${req.fare_max.toFixed(0)}</Text>
+                    <Text style={styles.reqMeta}>Range ${req.fare_min.toFixed(0)}–${req.fare_max.toFixed(0)}</Text>
                     <Pressable testID={`bid-${req.id}`} onPress={() => openBid(req)} style={styles.bidBtn}>
                       <Text style={styles.bidBtnText}>Set Fare</Text>
                     </Pressable>
@@ -220,6 +234,9 @@ const styles = StyleSheet.create({
   routeLine: { width: 2, flex: 1, backgroundColor: colors.border, marginVertical: 2 },
   routeText: { fontFamily: font.medium, fontSize: 14, color: colors.onSurface },
   reqFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.md },
+  metaChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  metaChip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colors.brandTertiary, paddingHorizontal: spacing.md, height: 30, borderRadius: radius.pill },
+  metaChipText: { fontFamily: font.semibold, fontSize: 12, color: colors.onBrandTertiary },
   reqMeta: { fontFamily: font.regular, fontSize: 12, color: colors.muted, flex: 1 },
   bidBtn: { backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.lg, height: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   bidBtnText: { fontFamily: font.semibold, fontSize: 14, color: "#fff" },

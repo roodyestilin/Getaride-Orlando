@@ -426,6 +426,7 @@ async def ensure_driver_requests():
             "accept_at": None,
             "accepted_at": None,
             "final_fare": None,
+            "pickup_eta_min": random.randint(2, 9),
             **fare,
             "created_at": now_ts(),
             "created_iso": datetime.now(timezone.utc).isoformat(),

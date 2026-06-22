@@ -126,6 +126,8 @@ export default function DriverTrip() {
                   <Text style={styles.metaText}>{ride.customer_rating}</Text>
                   <Text style={styles.metaDot}>·</Text>
                   <Text style={styles.metaText}>{ride.distance_miles} mi</Text>
+                  <Text style={styles.metaDot}>·</Text>
+                  <Text style={styles.metaText}>{ride.duration_min} min trip</Text>
                 </View>
               </View>
               <View style={styles.iconActions}>
