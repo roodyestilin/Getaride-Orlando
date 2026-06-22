@@ -1,0 +1,236 @@
+import React, { useCallback, useRef, useState } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useFocusEffect } from "expo-router";
+import * as Haptics from "expo-haptics";
+
+import Button from "@/src/components/Button";
+import Logo from "@/src/components/Logo";
+import { api } from "@/src/api";
+import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
+
+export default function DriverHome() {
+  const insets = useSafeAreaInsets();
+  const [online, setOnline] = useState(false);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [active, setActive] = useState<any>(null);
+  const [selected, setSelected] = useState<any>(null);
+  const [bidFare, setBidFare] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const onlineRef = useRef(online);
+  onlineRef.current = online;
+
+  const poll = useCallback(async () => {
+    try {
+      const a: any = await api("/driver/active");
+      setActive(a.ride);
+      if (onlineRef.current && !a.ride) {
+        const r: any = await api("/driver/requests");
+        setRequests(r.requests);
+      }
+    } catch {}
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      poll();
+      const iv = setInterval(poll, 3000);
+      return () => clearInterval(iv);
+    }, [poll])
+  );
+
+  const toggleOnline = async () => {
+    const next = !online;
+    setOnline(next);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    await api("/driver/online", { method: "POST", body: { status: next ? "online" : "offline" } });
+    if (next) poll();
+    else setRequests([]);
+  };
+
+  const openBid = (req: any) => {
+    setSelected(req);
+    setBidFare(req.recommended_fare);
+  };
+
+  const adjust = (delta: number) => {
+    Haptics.selectionAsync().catch(() => {});
+    setBidFare((f) => {
+      const v = Math.round((f + delta) * 2) / 2;
+      return Math.min(selected.fare_max, Math.max(selected.fare_min, v));
+    });
+  };
+
+  const submitBid = async (fare: number) => {
+    setSubmitting(true);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      await api(`/rides/${selected.id}/bid`, { method: "POST", body: { fare } });
+      const rideId = selected.id;
+      setSelected(null);
+      router.push(`/driver-trip/${rideId}`);
+    } catch {
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+      <View style={styles.header}>
+        <Logo size={32} showWord />
+        <Pressable testID="online-toggle" onPress={toggleOnline} style={[styles.onlinePill, online && styles.onlinePillActive]}>
+          <View style={[styles.statusDot, { backgroundColor: online ? colors.success : colors.muted }]} />
+          <Text style={[styles.onlineText, online && { color: colors.success }]}>{online ? "Online" : "Offline"}</Text>
+        </Pressable>
+      </View>
+
+      {active ? (
+        <Pressable testID="active-banner" style={styles.activeBanner} onPress={() => router.push(`/driver-trip/${active.id}`)}>
+          <View style={styles.activeIcon}>
+            <Ionicons name="car-sport" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.activeTitle}>Active trip in progress</Text>
+            <Text style={styles.activeSub}>{active.pickup.label} → {active.destination.label}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color={colors.brandPrimary} />
+        </Pressable>
+      ) : !online ? (
+        <View style={styles.offlineState}>
+          <Ionicons name="car-outline" size={56} color={colors.surfaceTertiary} />
+          <Text style={styles.offlineTitle}>{"You're offline"}</Text>
+          <Text style={styles.offlineSub}>Go online to start receiving ride requests near you.</Text>
+          <Button title="Go Online" onPress={toggleOnline} testID="go-online" style={{ marginTop: spacing.lg, alignSelf: "stretch" }} />
+        </View>
+      ) : (
+        <>
+          <View style={styles.requestsHead}>
+            <Text style={styles.sectionTitle}>Nearby requests</Text>
+            <View style={styles.liveBadge}>
+              <ActivityIndicator size="small" color={colors.brandPrimary} />
+              <Text style={styles.liveText}>{requests.length} live</Text>
+            </View>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, gap: spacing.md, paddingBottom: insets.bottom + 80 }}>
+            {requests.length === 0 ? (
+              <View style={styles.offlineState}>
+                <ActivityIndicator color={colors.brandPrimary} />
+                <Text style={styles.offlineSub}>Looking for ride requests…</Text>
+              </View>
+            ) : (
+              requests.map((req) => (
+                <View key={req.id} style={styles.reqCard} testID={`request-${req.id}`}>
+                  <View style={styles.reqTop}>
+                    <View style={styles.reqRating}>
+                      <Ionicons name="person-circle" size={20} color={colors.brandPrimary} />
+                      <Text style={styles.reqName}>{req.customer_name}</Text>
+                      <Ionicons name="star" size={12} color={colors.warning} />
+                      <Text style={styles.metaText}>{req.customer_rating}</Text>
+                    </View>
+                    <Text style={styles.reqRec}>${req.recommended_fare.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.reqRoute}>
+                    <View style={styles.routeCol}>
+                      <Ionicons name="ellipse" size={9} color={colors.success} />
+                      <View style={styles.routeLine} />
+                      <Ionicons name="location" size={12} color={colors.brandPrimary} />
+                    </View>
+                    <View style={{ flex: 1, gap: spacing.sm }}>
+                      <Text style={styles.routeText} numberOfLines={1}>{req.pickup.label}</Text>
+                      <Text style={styles.routeText} numberOfLines={1}>{req.destination.label}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.reqFooter}>
+                    <Text style={styles.reqMeta}>{req.distance_miles} mi · range ${req.fare_min.toFixed(0)}–${req.fare_max.toFixed(0)}</Text>
+                    <Pressable testID={`bid-${req.id}`} onPress={() => openBid(req)} style={styles.bidBtn}>
+                      <Text style={styles.bidBtnText}>Set Fare</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </>
+      )}
+
+      {selected && (
+        <View style={[StyleSheet.absoluteFill, styles.bidOverlay]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelected(null)} />
+          <View style={[styles.bidSheet, { paddingBottom: insets.bottom + spacing.lg }]} testID="bid-sheet">
+            <View style={styles.handle} />
+            <Text style={styles.bidTitle}>Submit your fare</Text>
+            <Text style={styles.bidRoute}>{selected.pickup.label} → {selected.destination.label}</Text>
+
+            <View style={styles.stepper}>
+              <Pressable testID="fare-minus" onPress={() => adjust(-0.5)} style={styles.stepBtn}>
+                <Ionicons name="remove" size={26} color={colors.brandPrimary} />
+              </Pressable>
+              <View style={styles.fareDisplay}>
+                <Text style={styles.fareBig}>${bidFare.toFixed(2)}</Text>
+                <Text style={styles.fareHint}>Allowed ${selected.fare_min.toFixed(0)}–${selected.fare_max.toFixed(0)}</Text>
+              </View>
+              <Pressable testID="fare-plus" onPress={() => adjust(0.5)} style={styles.stepBtn}>
+                <Ionicons name="add" size={26} color={colors.brandPrimary} />
+              </Pressable>
+            </View>
+
+            <Button title={`Submit $${bidFare.toFixed(2)} Bid`} onPress={() => submitBid(bidFare)} loading={submitting} testID="submit-bid" />
+            <Button
+              title={`Accept Recommended ($${selected.recommended_fare.toFixed(2)})`}
+              variant="secondary"
+              onPress={() => submitBid(selected.recommended_fare)}
+              testID="accept-recommended"
+              style={{ marginTop: spacing.sm }}
+            />
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.surface },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginBottom: spacing.lg },
+  onlinePill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, height: 36, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
+  onlinePillActive: { backgroundColor: "#dcfce7" },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  onlineText: { fontFamily: font.semibold, fontSize: 13, color: colors.muted },
+  activeBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginHorizontal: spacing.xl, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.lg },
+  activeIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  activeTitle: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },
+  activeSub: { fontFamily: font.regular, fontSize: 12, color: colors.onSurfaceSecondary, marginTop: 2 },
+  offlineState: { alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.xl, marginTop: spacing["3xl"] },
+  offlineTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
+  offlineSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center" },
+  requestsHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginBottom: spacing.md },
+  sectionTitle: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface },
+  liveBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandTertiary, paddingHorizontal: spacing.md, height: 30, borderRadius: radius.pill },
+  liveText: { fontFamily: font.semibold, fontSize: 12, color: colors.brandPrimary },
+  reqCard: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, ...shadowSoft, gap: spacing.md },
+  reqTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  reqRating: { flexDirection: "row", alignItems: "center", gap: 4 },
+  reqName: { fontFamily: font.semibold, fontSize: 14, color: colors.onSurface, marginRight: 4 },
+  metaText: { fontFamily: font.mono, fontSize: 12, color: colors.onSurfaceSecondary },
+  reqRec: { fontFamily: font.monoBold, fontSize: 18, color: colors.onSurface },
+  reqRoute: { flexDirection: "row", gap: spacing.md },
+  routeCol: { alignItems: "center", paddingTop: 2 },
+  routeLine: { width: 2, flex: 1, backgroundColor: colors.border, marginVertical: 2 },
+  routeText: { fontFamily: font.medium, fontSize: 14, color: colors.onSurface },
+  reqFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.md },
+  reqMeta: { fontFamily: font.regular, fontSize: 12, color: colors.muted, flex: 1 },
+  bidBtn: { backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.lg, height: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  bidBtnText: { fontFamily: font.semibold, fontSize: 14, color: "#fff" },
+  bidOverlay: { backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end", zIndex: 50 },
+  bidSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: spacing.xl, paddingTop: spacing.md, ...shadow },
+  handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.md },
+  bidTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
+  bidRoute: { fontFamily: font.regular, fontSize: 13, color: colors.muted, marginTop: 2, marginBottom: spacing.lg },
+  stepper: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.lg },
+  stepBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+  fareDisplay: { alignItems: "center" },
+  fareBig: { fontFamily: font.monoBold, fontSize: 40, color: colors.onSurface },
+  fareHint: { fontFamily: font.regular, fontSize: 12, color: colors.muted },
+});
