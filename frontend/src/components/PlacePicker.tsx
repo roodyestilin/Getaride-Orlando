@@ -21,9 +21,29 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
   useEffect(() => {
     if (!visible) return;
     let active = true;
-    api(`/places?q=${encodeURIComponent(query)}`)
-      .then((r: any) => active && setPlaces(r.places))
-      .catch(() => {});
+    const q = query.trim();
+    if (q.length >= 2) {
+      const token = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
+      const url =
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+        `?access_token=${token}&proximity=-81.3789,28.5384&country=us&limit=6&types=address,poi,place,neighborhood`;
+      fetch(url)
+        .then((r) => r.json())
+        .then((j: any) => {
+          if (!active) return;
+          const feats = (j?.features || []).map((f: any) => ({
+            label: f.place_name || f.text,
+            lat: f.center[1],
+            lng: f.center[0],
+          }));
+          setPlaces(feats);
+        })
+        .catch(() => {});
+    } else {
+      api(`/places?q=`)
+        .then((r: any) => active && setPlaces(r.places))
+        .catch(() => {});
+    }
     return () => {
       active = false;
     };
@@ -56,7 +76,7 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
 
         <FlatList
           data={places}
-          keyExtractor={(item) => item.label}
+          keyExtractor={(item, index) => `${item.label}-${index}`}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <Pressable
