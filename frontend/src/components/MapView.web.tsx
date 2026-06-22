@@ -13,9 +13,12 @@ type Props = {
   pickup?: LatLng | null;
   destination?: LatLng | null;
   driver?: LatLng | null;
+  enrouteFrom?: LatLng | null;
   stops?: LatLng[];
   style?: any;
   showRoute?: boolean;
+  autoFit?: boolean;
+  onPickupChange?: (p: LatLng) => void;
 };
 
 const ORLANDO: LatLng = { lat: 28.5384, lng: -81.3789 };
@@ -32,10 +35,35 @@ function makeDriverEl(): HTMLDivElement {
   return el;
 }
 
-export default function MapView({ pickup, destination, driver, stops = [], style, showRoute = true }: Props) {
+function nearestOnSegment(p: number[], a: number[], b: number[]): number[] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return [a[0] + dx * t, a[1] + dy * t];
+}
+
+function snapToRoute(coords: number[][] | null, lng: number, lat: number): [number, number] {
+  if (!coords || coords.length < 2) return [lng, lat];
+  let best: number[] = [lng, lat];
+  let bestD = Infinity;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const q = nearestOnSegment([lng, lat], coords[i], coords[i + 1]);
+    const d = (q[0] - lng) ** 2 + (q[1] - lat) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = q;
+    }
+  }
+  return [best[0], best[1]];
+}
+
+export default function MapView({ pickup, destination, driver, enrouteFrom, stops = [], style, showRoute = true, autoFit = true, onPickupChange }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
+  const routeRef = useRef<number[][] | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const pickupM = useRef<mapboxgl.Marker | null>(null);
   const destM = useRef<mapboxgl.Marker | null>(null);
@@ -47,15 +75,32 @@ export default function MapView({ pickup, destination, driver, stops = [], style
     if (width > 0 && height > 0) setSize({ w: Math.round(width), h: Math.round(height) });
   };
 
-  const setPin = (ref: React.MutableRefObject<mapboxgl.Marker | null>, place: LatLng | null | undefined, color: string) => {
+  const placeDriver = (lng: number, lat: number) => {
     const map = mapRef.current;
     if (!map) return;
-    if (place) {
-      if (!ref.current) ref.current = new mapboxgl.Marker({ color }).setLngLat([place.lng, place.lat]).addTo(map);
-      else ref.current.setLngLat([place.lng, place.lat]);
-    } else if (ref.current) {
-      ref.current.remove();
-      ref.current = null;
+    const [sl, sa] = snapToRoute(routeRef.current, lng, lat);
+    if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat([sl, sa]).addTo(map);
+    else driverM.current.setLngLat([sl, sa]);
+  };
+
+  const setPickupPin = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (pickup) {
+      if (!pickupM.current) {
+        pickupM.current = new mapboxgl.Marker({ color: colors.success, draggable: !!onPickupChange }).setLngLat([pickup.lng, pickup.lat]).addTo(map);
+        if (onPickupChange) {
+          pickupM.current.on("dragend", () => {
+            const ll = pickupM.current!.getLngLat();
+            onPickupChange({ lat: ll.lat, lng: ll.lng });
+          });
+        }
+      } else {
+        pickupM.current.setLngLat([pickup.lng, pickup.lat]);
+      }
+    } else if (pickupM.current) {
+      pickupM.current.remove();
+      pickupM.current = null;
     }
   };
 
@@ -65,27 +110,33 @@ export default function MapView({ pickup, destination, driver, stops = [], style
     if (map.getLayer("route")) map.removeLayer("route");
     if (map.getLayer("route-bg")) map.removeLayer("route-bg");
     if (map.getSource("route")) map.removeSource("route");
+    routeRef.current = null;
     if (!showRoute || !pickup || !destination) return;
-    const path = [pickup, ...stops, destination].map((p) => `${p.lng},${p.lat}`).join(";");
+    const waypoints = [enrouteFrom, pickup, ...stops, destination].filter(Boolean) as LatLng[];
+    const path = waypoints.map((p) => `${p.lng},${p.lat}`).join(";");
     try {
       const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${path}?geometries=geojson&overview=full&access_token=${TOKEN}`;
       const res = await fetch(url);
       const json = await res.json();
       const coords = json?.routes?.[0]?.geometry?.coordinates;
-      if (!coords || !mapRef.current || !map.getStyle()) return;
+      if (!coords || !mapRef.current) return;
+      routeRef.current = coords;
       map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
       map.addLayer({ id: "route-bg", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": 8 } });
       map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": colors.brandPrimary, "line-width": 5 } });
+      // re-snap driver onto the freshly loaded route
+      if (driver) placeDriver(driver.lng, driver.lat);
     } catch {}
   };
 
   const fitBounds = () => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !autoFit) return;
     const pts: LatLng[] = [];
     if (pickup) pts.push(pickup);
     if (destination) pts.push(destination);
     stops.forEach((s) => pts.push(s));
+    if (enrouteFrom) pts.push(enrouteFrom);
     if (driver) pts.push(driver);
     if (pts.length === 0) return;
     if (pts.length === 1) {
@@ -100,14 +151,18 @@ export default function MapView({ pickup, destination, driver, stops = [], style
   const updateAll = () => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    setPin(pickupM, pickup, colors.success);
-    setPin(destM, destination, colors.brandPrimary);
+    setPickupPin();
+    if (destination) {
+      if (!destM.current) destM.current = new mapboxgl.Marker({ color: colors.brandPrimary }).setLngLat([destination.lng, destination.lat]).addTo(map);
+      else destM.current.setLngLat([destination.lng, destination.lat]);
+    } else if (destM.current) {
+      destM.current.remove();
+      destM.current = null;
+    }
     stopMs.current.forEach((m) => m.remove());
     stopMs.current = stops.map((s) => new mapboxgl.Marker({ color: colors.warning }).setLngLat([s.lng, s.lat]).addTo(map));
-    if (driver) {
-      if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat([driver.lng, driver.lat]).addTo(map);
-      else driverM.current.setLngLat([driver.lng, driver.lat]);
-    } else if (driverM.current) {
+    if (driver) placeDriver(driver.lng, driver.lat);
+    else if (driverM.current) {
       driverM.current.remove();
       driverM.current = null;
     }
@@ -115,7 +170,6 @@ export default function MapView({ pickup, destination, driver, stops = [], style
     fitBounds();
   };
 
-  // init map once we know the container size
   useEffect(() => {
     if (!size || !containerRef.current || mapRef.current) return;
     const center = pickup || destination || ORLANDO;
@@ -140,24 +194,20 @@ export default function MapView({ pickup, destination, driver, stops = [], style
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size]);
 
-  // keep canvas sized to the container
   useEffect(() => {
     if (mapRef.current && size) mapRef.current.resize();
   }, [size]);
 
-  // react to route endpoints / stops
-  const depKey = JSON.stringify({ pickup, destination, stops });
+  const depKey = JSON.stringify({ pickup, destination, stops, enrouteFrom });
   useEffect(() => {
     updateAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depKey]);
 
-  // react to frequent driver movement (pan only)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !driver || !loadedRef.current) return;
-    if (driverM.current) driverM.current.setLngLat([driver.lng, driver.lat]);
-    else driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat([driver.lng, driver.lat]).addTo(map);
+    placeDriver(driver.lng, driver.lat);
     map.panTo([driver.lng, driver.lat], { duration: 900 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driver?.lat, driver?.lng]);

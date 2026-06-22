@@ -79,7 +79,7 @@ export default function DriverHome() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
       <View style={styles.header}>
-        <Logo size={32} showWord />
+        <Logo size={32} showWord showMark={false} />
         <Pressable testID="online-toggle" onPress={toggleOnline} style={[styles.onlinePill, online && styles.onlinePillActive]}>
           <View style={[styles.statusDot, { backgroundColor: online ? colors.success : colors.muted }]} />
           <Text style={[styles.onlineText, online && { color: colors.success }]}>{online ? "Online" : "Offline"}</Text>

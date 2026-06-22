@@ -2,17 +2,19 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { colors, font } from "@/src/theme";
 
-export default function Logo({ size = 44, showWord = false }: { size?: number; showWord?: boolean }) {
+export default function Logo({ size = 44, showWord = false, showMark = true }: { size?: number; showWord?: boolean; showMark?: boolean }) {
   return (
     <View style={styles.row}>
-      <View
-        style={[
-          styles.box,
-          { width: size, height: size, borderRadius: size * 0.28 },
-        ]}
-      >
-        <Text style={[styles.g, { fontSize: size * 0.62, lineHeight: size * 0.78 }]}>g</Text>
-      </View>
+      {showMark ? (
+        <View
+          style={[
+            styles.box,
+            { width: size, height: size, borderRadius: size * 0.28 },
+          ]}
+        >
+          <Text style={[styles.g, { fontSize: size * 0.62, lineHeight: size * 0.78 }]}>g</Text>
+        </View>
+      ) : null}
       {showWord ? (
         <Text style={styles.word}>
           Getaride <Text style={styles.wordCity}>Orlando</Text>

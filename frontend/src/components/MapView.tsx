@@ -10,9 +10,12 @@ type Props = {
   pickup?: LatLng | null;
   destination?: LatLng | null;
   driver?: LatLng | null;
+  enrouteFrom?: LatLng | null;
   stops?: LatLng[];
   style?: any;
   showRoute?: boolean;
+  autoFit?: boolean;
+  onPickupChange?: (p: LatLng) => void;
 };
 
 function buildProjector(points: LatLng[], w: number, h: number, pad: number) {
@@ -31,7 +34,7 @@ function buildProjector(points: LatLng[], w: number, h: number, pad: number) {
   };
 }
 
-export default function MapView({ pickup, destination, driver, stops = [], style, showRoute = true }: Props) {
+export default function MapView({ pickup, destination, driver, enrouteFrom, stops = [], style, showRoute = true }: Props) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -53,11 +56,12 @@ export default function MapView({ pickup, destination, driver, stops = [], style
 
   const routePts = useMemo(() => {
     const r: LatLng[] = [];
+    if (enrouteFrom) r.push(enrouteFrom);
     if (pickup) r.push(pickup);
     stops.forEach((s) => r.push(s));
     if (destination) r.push(destination);
     return r;
-  }, [pickup, destination, stops]);
+  }, [pickup, destination, stops, enrouteFrom]);
 
   let routePath = "";
   if (project && routePts.length >= 2) {

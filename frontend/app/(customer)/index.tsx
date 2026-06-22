@@ -33,6 +33,19 @@ export default function CustomerHome() {
     else if (picker === "stop") setStops((s) => [...s, p]);
   };
 
+  const onPickupChange = async (p: LatLng) => {
+    setPickup({ lat: p.lat, lng: p.lng, label: pickup.label });
+    try {
+      const token = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
+      const r = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${p.lng},${p.lat}.json?access_token=${token}&limit=1`);
+      const j = await r.json();
+      const label = j?.features?.[0]?.place_name || "Custom pickup location";
+      setPickup({ lat: p.lat, lng: p.lng, label });
+    } catch {
+      setPickup({ lat: p.lat, lng: p.lng, label: "Custom pickup location" });
+    }
+  };
+
   const findRides = async () => {
     if (!destination) return;
     setLoading(true);
@@ -58,13 +71,13 @@ export default function CustomerHome() {
 
   return (
     <View style={styles.container}>
-      <MapView pickup={pickup} destination={destination} stops={stops} style={StyleSheet.absoluteFill} />
+      <MapView pickup={pickup} destination={destination} stops={stops} onPickupChange={onPickupChange} autoFit={!!destination} style={StyleSheet.absoluteFill} />
 
       <BlurView intensity={40} tint="light" style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="home-profile" onPress={() => router.push("/(customer)/account")} style={styles.profileBtn}>
           <Ionicons name="person" size={20} color={colors.brandPrimary} />
         </Pressable>
-        <Logo size={30} showWord />
+        <Logo size={30} showWord showMark={false} />
         <View style={{ width: 40 }} />
       </BlurView>
 
@@ -126,6 +139,12 @@ export default function CustomerHome() {
             testID="destination-row"
           />
         </View>
+
+        <View style={styles.pinHint}>
+          <Ionicons name="hand-left-outline" size={13} color={colors.muted} />
+          <Text style={styles.pinHintText}>Drag the green pin on the map to set your exact pickup</Text>
+        </View>
+
 
         <Pressable testID="add-stop" onPress={() => setPicker("stop")} style={styles.addStop}>
           <Ionicons name="add-circle-outline" size={18} color={colors.brandPrimary} />
@@ -233,5 +252,7 @@ const styles = StyleSheet.create({
   locPlaceholder: { color: colors.muted, fontFamily: font.regular },
   divider: { height: 1, backgroundColor: colors.border, marginLeft: 26 },
   addStop: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.md },
+  pinHint: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: spacing.sm },
+  pinHintText: { fontFamily: font.regular, fontSize: 12, color: colors.muted },
   addStopText: { fontFamily: font.semibold, fontSize: 14, color: colors.brandPrimary },
 });

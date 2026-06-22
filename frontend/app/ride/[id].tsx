@@ -99,6 +99,7 @@ export default function RideScreen() {
         destination={ride.destination}
         stops={ride.stops}
         driver={isSearching ? null : driverLoc}
+        enrouteFrom={isSearching ? null : ride.assigned_driver?.start}
         style={StyleSheet.absoluteFill}
       />
 
