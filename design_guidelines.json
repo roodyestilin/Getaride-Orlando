@@ -1,0 +1,173 @@
+{
+  "app_name": "Getaride Orlando",
+  "personality": "1 iOS-Native Clean (Vivid Purple override per user brief)",
+  "personality_one_liner": "A clean, map-first native iOS experience with vivid purple accents, focusing on clear address entry, generous spacing, and frictionless fare bidding.",
+  "color": {
+    "surface": "#ffffff",
+    "onSurface": "#18181b",
+    "surfaceSecondary": "#f4f4f5",
+    "onSurfaceSecondary": "#27272a",
+    "surfaceTertiary": "#e4e4e7",
+    "onSurfaceTertiary": "#3f3f46",
+    "surfaceInverse": "#18181b",
+    "onSurfaceInverse": "#ffffff",
+    "brand": "#a855f7",
+    "brandPrimary": "#9333ea",
+    "onBrandPrimary": "#ffffff",
+    "brandSecondary": "#c084fc",
+    "onBrandSecondary": "#ffffff",
+    "brandTertiary": "#f3e8ff",
+    "onBrandTertiary": "#7e22ce",
+    "success": "#22c55e",
+    "onSuccess": "#ffffff",
+    "warning": "#f59e0b",
+    "onWarning": "#ffffff",
+    "error": "#ef4444",
+    "onError": "#ffffff",
+    "info": "#3f3f46",
+    "onInfo": "#ffffff",
+    "border": "#e4e4e7",
+    "borderStrong": "#a1a1aa",
+    "divider": "#f4f4f5"
+  },
+  "typography": {
+    "displayFontFamily": "SpaceGrotesk-Regular",
+    "textFontFamily": "PlusJakartaSans-Regular",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous iOS native padding (lg/xl). Never cramp address inputs or fare lists. Use flex gaps over margins where possible. Sticky bottom CTAs must clear the home indicator + 16pt.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use frosted glass overlays (expo-blur) for floating map controls (FABs, back buttons, top headers).",
+      "Use glass for the bottom sheet handle/header area sitting over the map.",
+      "Use glass on sticky CTAs that sit above scrolling lists of driver offers."
+    ],
+    "dont's": [
+      "Do not use glassmorphism on standard form inputs, list rows, or text bodies.",
+      "Avoid stacking multiple blurred sheets."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-blur",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Auth",
+      "purpose": "Email login/signup with role selection (Customer vs Driver).",
+      "states": {
+        "loading": "Centered spinner on screen",
+        "empty": "N/A",
+        "error": "Standard alert or inline red text"
+      },
+      "layout": "Clean white background. Header: Centered App Logo. Middle: Segmented control for Customer/Driver mode, followed by Email/Password inputs (labels above). Bottom: Sticky 'Continue' CTA button inside KeyboardAvoidingView."
+    },
+    {
+      "name": "Customer Home (Ride Request)",
+      "purpose": "Map-centric home screen for entering pickup, destination, and stops.",
+      "states": {
+        "loading": "Map loads with shimmer skeleton on bottom sheet",
+        "empty": "N/A",
+        "error": "Toast indicating location services disabled"
+      },
+      "layout": "Full-bleed map background. Floating glass header with profile icon (left) and 'Getaride' wordmark (center). A persistent bottom sheet (@gorhom/bottom-sheet) anchored at the bottom. Inside sheet: 'Where to?' input field, 'Ride Now' / 'Schedule' toggle pills. Address inputs should have generous padding. Haptic feedback on input focus."
+    },
+    {
+      "name": "Fare Marketplace",
+      "purpose": "Where customers propose a fare and compare live driver offers.",
+      "states": {
+        "loading": "Pulsing 'Waiting for drivers...' skeleton cards",
+        "empty": "Illustration: No drivers nearby. CTA: Increase Fare.",
+        "error": "Toast indicating network error"
+      },
+      "layout": "Map in background (dimmed/blurred). Bottom sheet expanded to 70% height. Top of sheet: Ride Summary (Route + Distance). Middle: Editable fare input field (uses SpaceGrotesk for numeric focus). Below: A scrolling list of 'Bid Cards' (driver offers). Each Bid Card contains driver avatar (left), Driver Name + Vehicle info (middle), Rating, ETA, Offered Fare (right), and a prominent 'Accept' button. Sticky CTA at the bottom to 'Cancel Request'."
+    },
+    {
+      "name": "Driver Mode - Incoming Request",
+      "purpose": "Alerts driver to a new ride request and allows them to submit a custom fare.",
+      "states": {
+        "loading": "Spinner during bid submission",
+        "empty": "Map view with 'You're online. Waiting for rides...'",
+        "error": "Toast indicating bid failed to send"
+      },
+      "layout": "Full-bleed map. Top floating pill: 'Online' toggle. When request arrives, a bottom sheet pops up. Content: Rider rating, distance to pickup, total trip distance, and Recommended Fare (large typography). Below: Segmented control or slider to adjust fare (decrease/increase in increments). Two side-by-side buttons: 'Accept Recommended' (secondary) vs 'Submit Custom Bid' (brandPrimary)."
+    },
+    {
+      "name": "Live Tracking & Chat",
+      "purpose": "Real-time trip status, map tracking, and communication.",
+      "states": {
+        "loading": "Map loading overlay",
+        "empty": "N/A",
+        "error": "Connection lost banner at top"
+      },
+      "layout": "Full-bleed map showing route line. Floating action buttons for centering map. Persistent bottom sheet detailing the trip: Driver/Customer avatar, Vehicle Plate (if customer view), Live ETA (large mono font), and Trip Status. Horizontal action row: 'Chat' (opens modal), 'Call' (opens dialer), 'Cancel'. The Chat modal should have brandPrimary bubbles for outgoing messages and surfaceSecondary for incoming."
+    }
+  ],
+  "images": {
+    "driver_avatar_1": {
+      "url": "https://images.pexels.com/photos/10816007/pexels-photo-10816007.jpeg?auto=compress&cs=tinysrgb&w=300",
+      "alt": "Professional male driver avatar"
+    },
+    "driver_avatar_2": {
+      "url": "https://images.pexels.com/photos/31869537/pexels-photo-31869537.jpeg?auto=compress&cs=tinysrgb&w=300",
+      "alt": "Professional female driver avatar"
+    },
+    "driver_avatar_3": {
+      "url": "https://images.pexels.com/photos/14589344/pexels-photo-14589344.jpeg?auto=compress&cs=tinysrgb&w=300",
+      "alt": "Professional male driver avatar"
+    },
+    "map_placeholder": {
+      "url": "https://images.pexels.com/photos/6664694/pexels-photo-6664694.jpeg?auto=compress&cs=tinysrgb&w=800",
+      "alt": "Clean city map background placeholder"
+    }
+  },
+  "haptics": {
+    "primary_button_press": "impactLight",
+    "fare_input_increment": "selection",
+    "driver_offer_received": "notificationSuccess",
+    "ride_accepted": "notificationSuccess",
+    "tab_change": "selection"
+  },
+  "instructions_to_main_agent": [
+    "Strictly apply the vivid purple (#9333ea) brand palette as requested by the user, ignoring the usual anti-pattern ban on purple.",
+    "Implement the UI using the '1 iOS-Native Clean' personality guidelines: generous padding (lg/xl), subtle shadows (tier 1), and clean readable typography.",
+    "For typography, use 'PlusJakartaSans' for standard UI text (body, labels) and 'SpaceGrotesk' strictly for numbers (Fares, ETAs, Distances) to give a technical, clear look to marketplace data.",
+    "Use @gorhom/bottom-sheet extensively for the core interaction model: Address input, Fare Bidding, and Live Tracking should all live inside bottom sheets overlaid on a map view.",
+    "Implement real-time fare bidding (Fare Marketplace) with clear visual hierarchy: Rider sets an editable fare, and Driver bids come in as cards with Avatar, Rating, Vehicle, and Price.",
+    "Ensure the Chat UI uses brandPrimary (#9333ea) for outgoing bubbles and surfaceSecondary (#f4f4f5) for incoming, maintaining AAA contrast on text.",
+    "Remember to include glassmorphism (expo-blur) for floating map controls and bottom sheet drag handles, falling back to solid colors gracefully on Android."
+  ]
+}
