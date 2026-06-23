@@ -26,6 +26,16 @@ const STATUS_TEXT: Record<string, string> = {
   completed: "You've arrived!",
 };
 
+function milesBetween(a?: { lat: number; lng: number }, b?: { lat: number; lng: number }): number | null {
+  if (!a || !b) return null;
+  const R = 3958.8;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
 export default function RideScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -185,6 +195,13 @@ function SearchingSheet({ ride, offers, onAccept, selecting, onCancel, insets }:
                   <Text style={styles.metaDot}>·</Text>
                   <Ionicons name="time-outline" size={12} color={colors.muted} />
                   <Text style={styles.metaText}>{o.eta_minutes} min</Text>
+                  {milesBetween(ride.pickup, o.driver.start) != null ? (
+                    <>
+                      <Text style={styles.metaDot}>·</Text>
+                      <Ionicons name="navigate-outline" size={12} color={colors.muted} />
+                      <Text style={styles.metaText}>{milesBetween(ride.pickup, o.driver.start)!.toFixed(1)} mi away</Text>
+                    </>
+                  ) : null}
                 </View>
               </View>
               <View style={styles.bidRight}>

@@ -385,7 +385,8 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     const map = mapRef.current;
     if (!map || !driver || !loadedRef.current || navMode) return;
     placeDriver(driver.lng, driver.lat);
-    map.panTo([driver.lng, driver.lat], { duration: 900 });
+    // Keep pickup, destination and the car icon all framed as the driver moves.
+    fitBounds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driver?.lat, driver?.lng]);
 
