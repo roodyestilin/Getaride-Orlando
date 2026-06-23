@@ -185,7 +185,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat(coords[0] as any).addTo(map);
     if (followRef.current) {
       followingRef.current = true;
-      map.easeTo({ center: coords[0] as any, zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 700 });
+      map.easeTo({ center: coords[0] as any, zoom: 16.6, bearing: 0, pitch: 55, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 700 });
     }
     const first = (steps[1] || steps[0])?.maneuver?.instruction;
     if (first) navStateRef.current = { instruction: first, distanceText: fmtDist(stepEnd[0] || 0), announce: first, announceId: ++announceIdRef.current };

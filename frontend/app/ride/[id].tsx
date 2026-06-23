@@ -145,6 +145,27 @@ function SearchingSheet({ ride, offers, onAccept, selecting, onCancel, insets }:
 
       <Text style={styles.compareTitle}>Compare driver offers</Text>
 
+      <View style={styles.routeBox}>
+        <View style={styles.routeCol}>
+          <Ionicons name="ellipse" size={9} color={colors.success} />
+          <View style={styles.routeLine} />
+          {(ride.stops || []).map((_: any, i: number) => (
+            <React.Fragment key={i}>
+              <Ionicons name="ellipse" size={8} color={colors.warning} />
+              <View style={styles.routeLine} />
+            </React.Fragment>
+          ))}
+          <Ionicons name="location" size={13} color={colors.brandPrimary} />
+        </View>
+        <View style={{ flex: 1, gap: spacing.sm }}>
+          <Text style={styles.routeText} numberOfLines={1}>{ride.pickup.label}</Text>
+          {(ride.stops || []).map((s: any, i: number) => (
+            <Text key={i} style={styles.routeStopText} numberOfLines={1}>{s.label || "Stop"}</Text>
+          ))}
+          <Text style={styles.routeText} numberOfLines={1}>{ride.destination.label}</Text>
+        </View>
+      </View>
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing.md }}>
         {offers.length === 0 ? (
           <View style={styles.waiting}>
@@ -290,6 +311,11 @@ const styles = StyleSheet.create({
   liveBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandTertiary, paddingHorizontal: spacing.md, height: 32, borderRadius: radius.pill },
   liveText: { fontFamily: font.semibold, fontSize: 12, color: colors.brandPrimary },
   compareTitle: { fontFamily: font.bold, fontSize: 16, color: colors.onSurface, marginBottom: spacing.md },
+  routeBox: { flexDirection: "row", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, marginBottom: spacing.md },
+  routeCol: { alignItems: "center", paddingTop: 3 },
+  routeLine: { width: 2, flex: 1, minHeight: 16, backgroundColor: colors.border, marginVertical: 3 },
+  routeText: { flex: 1, fontFamily: font.medium, fontSize: 14, color: colors.onSurface },
+  routeStopText: { flex: 1, fontFamily: font.regular, fontSize: 13, color: colors.onSurfaceSecondary },
   waiting: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl },
   waitingText: { fontFamily: font.medium, fontSize: 14, color: colors.muted, textAlign: "center" },
   bidCard: {

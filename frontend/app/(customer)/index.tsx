@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -33,17 +33,38 @@ export default function CustomerHome() {
     else if (picker === "stop") setStops((s) => [...s, p]);
   };
 
-  const onPickupChange = async (p: LatLng) => {
-    setPickup({ lat: p.lat, lng: p.lng, label: pickup.label });
+  const reverseGeocode = async (lng: number, lat: number): Promise<string> => {
     try {
       const token = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
-      const r = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${p.lng},${p.lat}.json?access_token=${token}&limit=1`);
+      const r = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1`);
       const j = await r.json();
-      const label = j?.features?.[0]?.place_name || "Custom pickup location";
-      setPickup({ lat: p.lat, lng: p.lng, label });
+      return j?.features?.[0]?.place_name || "Current location";
     } catch {
-      setPickup({ lat: p.lat, lng: p.lng, label: "Custom pickup location" });
+      return "Current location";
     }
+  };
+
+  // Auto-detect the customer's current location on first load (web geolocation).
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof navigator === "undefined" || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setPickup({ lat: latitude, lng: longitude, label: "Locating…" });
+        const label = await reverseGeocode(longitude, latitude);
+        setPickup({ lat: latitude, lng: longitude, label });
+      },
+      () => {
+        // Permission denied or unavailable — keep the default Orlando pickup.
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  }, []);
+
+  const onPickupChange = async (p: LatLng) => {
+    setPickup({ lat: p.lat, lng: p.lng, label: pickup.label });
+    const label = await reverseGeocode(p.lng, p.lat);
+    setPickup({ lat: p.lat, lng: p.lng, label });
   };
 
   const findRides = async () => {
@@ -71,7 +92,7 @@ export default function CustomerHome() {
 
   return (
     <View style={styles.container}>
-      <MapView pickup={pickup} destination={destination} stops={stops} onPickupChange={onPickupChange} autoFit={!!destination} style={StyleSheet.absoluteFill} />
+      <MapView pickup={pickup} destination={destination} stops={stops} onPickupChange={onPickupChange} autoFit style={StyleSheet.absoluteFill} />
 
       <BlurView intensity={40} tint="light" style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="home-profile" onPress={() => router.push("/(customer)/account")} style={styles.profileBtn}>
