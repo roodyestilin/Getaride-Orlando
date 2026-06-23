@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Linking,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,8 +17,11 @@ import * as Haptics from "expo-haptics";
 import MapView, { LatLng } from "@/src/components/MapView";
 import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
+import VehicleImage from "@/src/components/VehicleImage";
 import { api } from "@/src/api";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
+
+const vehicleDesc = (x: any) => `${x?.color || ""} ${x?.vehicle || ""}`.trim();
 
 const STATUS_TEXT: Record<string, string> = {
   driver_enroute: "Driver is on the way",
@@ -96,6 +100,18 @@ export default function RideScreen() {
     router.replace("/(customer)");
   };
 
+  const [tipState, setTipState] = useState<number | null>(null);
+  const tip = tipState ?? track?.tip ?? 0;
+  const addTip = async (amount: number) => {
+    setTipState(amount);
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await api(`/rides/${id}/tip`, { method: "POST", body: { amount } });
+    } catch {
+      setTipState(null);
+    }
+  };
+
   if (!ride) {
     return (
       <View style={styles.center}>
@@ -132,9 +148,9 @@ export default function RideScreen() {
           insets={insets}
         />
       ) : status === "completed" ? (
-        <CompletedSheet ride={ride} insets={insets} />
+        <CompletedSheet ride={ride} track={track} insets={insets} tip={tip} onTip={addTip} />
       ) : (
-        <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} />
+        <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} />
       )}
     </View>
   );
@@ -210,6 +226,7 @@ function SearchingSheet({ ride, offers, onAccept, selecting, onCancel, insets }:
                 </View>
               </View>
               <View style={styles.bidRight}>
+                <VehicleImage desc={vehicleDesc(o.driver)} width={78} height={48} rounded={10} testID={`offer-vehicle-${o.id}`} />
                 <Text style={styles.bidFare}>${o.fare.toFixed(2)}</Text>
                 <Pressable
                   testID={`accept-${o.id}`}
@@ -234,7 +251,7 @@ function SearchingSheet({ ride, offers, onAccept, selecting, onCancel, insets }:
   );
 }
 
-function TrackingSheet({ ride, track, status, onCancel, insets, rideId }: any) {
+function TrackingSheet({ ride, track, status, onCancel, insets, rideId, tip, onTip }: any) {
   const d = ride.assigned_driver || {};
   const eta = track?.eta_minutes ?? d.eta_minutes ?? 0;
   const locked = status === "in_progress";
@@ -268,7 +285,7 @@ function TrackingSheet({ ride, track, status, onCancel, insets, rideId }: any) {
             <Text style={styles.metaText}>{(d.rating ?? 5).toFixed(1)}</Text>
           </View>
         </View>
-        <Text style={styles.bidFare}>${(ride.final_fare ?? ride.recommended_fare).toFixed(2)}</Text>
+        <VehicleImage desc={vehicleDesc(d)} width={96} height={62} testID="track-vehicle" />
       </View>
 
       <View style={styles.actionRow}>
@@ -277,11 +294,68 @@ function TrackingSheet({ ride, track, status, onCancel, insets, rideId }: any) {
         <ActionBtn icon="close-circle" label="Cancel" disabled={locked} onPress={onCancel} danger testID="cancel-trip" />
       </View>
       {locked ? <Text style={styles.lockHint}>Chat, call and cancel are paused while your trip is in progress.</Text> : null}
+
+      {status === "in_progress" ? <TipSection tip={tip} onTip={onTip} /> : null}
     </View>
   );
 }
 
-function CompletedSheet({ ride, insets }: any) {
+function TipSection({ tip, onTip }: any) {
+  const presets = [3, 5, 10];
+  const [customMode, setCustomMode] = useState(false);
+  const [customVal, setCustomVal] = useState("");
+  const isPreset = presets.includes(tip);
+  const customActive = customMode || (tip > 0 && !isPreset);
+  return (
+    <View style={styles.tipBox}>
+      <View style={styles.tipHeader}>
+        <Ionicons name="heart" size={15} color={colors.brandPrimary} />
+        <Text style={styles.tipTitle}>Add a tip</Text>
+      </View>
+      <Text style={styles.tipSub}>100% goes to your driver</Text>
+      <View style={styles.tipRow}>
+        {presets.map((p) => {
+          const active = tip === p && !customMode;
+          return (
+            <Pressable key={p} testID={`tip-${p}`} onPress={() => { setCustomMode(false); onTip(p); }} style={[styles.tipChip, active && styles.tipChipActive]}>
+              <Text style={[styles.tipChipText, active && styles.tipChipTextActive]}>${p}</Text>
+            </Pressable>
+          );
+        })}
+        <Pressable testID="tip-custom" onPress={() => setCustomMode(true)} style={[styles.tipChip, customActive && styles.tipChipActive]}>
+          <Text style={[styles.tipChipText, customActive && styles.tipChipTextActive]}>Custom</Text>
+        </Pressable>
+      </View>
+      {customMode ? (
+        <View style={styles.customRow}>
+          <Text style={styles.customDollar}>$</Text>
+          <TextInput
+            testID="tip-custom-input"
+            value={customVal}
+            onChangeText={setCustomVal}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            placeholderTextColor={colors.muted}
+            style={styles.customInput}
+          />
+          <Pressable testID="tip-custom-apply" onPress={() => { onTip(Math.max(0, parseFloat(customVal) || 0)); setCustomMode(false); }} style={styles.customApply}>
+            <Text style={styles.customApplyText}>Add</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {tip > 0 ? (
+        <Text style={styles.tipConfirm} testID="tip-confirm">✓ Tip added: ${Number(tip).toFixed(2)} — thank you!</Text>
+      ) : (
+        <Pressable testID="tip-0" onPress={() => { setCustomMode(false); onTip(0); }}>
+          <Text style={styles.tipSkip}>No tip</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function CompletedSheet({ ride, track, insets, tip, onTip }: any) {
+  const fare = track?.final_fare ?? ride.final_fare ?? ride.recommended_fare;
   return (
     <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
       <View style={styles.handle} />
@@ -289,8 +363,12 @@ function CompletedSheet({ ride, insets }: any) {
         <Ionicons name="checkmark-circle" size={56} color={colors.success} />
       </View>
       <Text style={styles.completeTitle}>Trip completed</Text>
-      <Text style={styles.completeFare}>${(ride.final_fare ?? ride.recommended_fare).toFixed(2)}</Text>
+      <Text style={styles.completeFare}>${fare.toFixed(2)}</Text>
+      {tip > 0 ? <Text style={styles.completeTip}>+ ${Number(tip).toFixed(2)} tip · Total ${(fare + Number(tip)).toFixed(2)}</Text> : null}
       <Text style={styles.completeSub}>{ride.pickup.label} → {ride.destination.label}</Text>
+
+      <TipSection tip={tip} onTip={onTip} />
+
       <Button title="Done" onPress={() => router.replace("/(customer)")} testID="trip-done" style={{ marginTop: spacing.lg }} />
     </View>
   );
@@ -385,4 +463,21 @@ const styles = StyleSheet.create({
   completeTitle: { fontFamily: font.bold, fontSize: 22, color: colors.onSurface, textAlign: "center" },
   completeFare: { fontFamily: font.monoBold, fontSize: 30, color: colors.onSurface, textAlign: "center", marginVertical: spacing.xs },
   completeSub: { fontFamily: font.regular, fontSize: 13, color: colors.muted, textAlign: "center" },
+  completeTip: { fontFamily: font.semibold, fontSize: 14, color: colors.brandPrimary, textAlign: "center", marginBottom: spacing.xs },
+  tipBox: { marginTop: spacing.lg, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.lg },
+  tipHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  tipTitle: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },
+  tipSub: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 2, marginBottom: spacing.md },
+  tipRow: { flexDirection: "row", gap: spacing.sm },
+  tipChip: { flex: 1, height: 44, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  tipChipActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
+  tipChipText: { fontFamily: font.semibold, fontSize: 14, color: colors.onSurface },
+  tipChipTextActive: { color: colors.brandPrimary },
+  customRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
+  customDollar: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface },
+  customInput: { flex: 1, height: 44, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: spacing.md, fontFamily: font.medium, fontSize: 15, color: colors.onSurface },
+  customApply: { height: 44, paddingHorizontal: spacing.lg, borderRadius: radius.md, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  customApplyText: { fontFamily: font.semibold, fontSize: 14, color: "#fff" },
+  tipConfirm: { fontFamily: font.semibold, fontSize: 13, color: colors.success, textAlign: "center", marginTop: spacing.md },
+  tipSkip: { fontFamily: font.medium, fontSize: 13, color: colors.muted, textAlign: "center", marginTop: spacing.md },
 });

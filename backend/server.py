@@ -188,6 +188,58 @@ class MessageReq(BaseModel):
     text: str
 
 
+class TipReq(BaseModel):
+    amount: float
+
+
+# --------------------------------------------------------------------------
+# AI vehicle image generation (Gemini Nano Banana) — cached per description
+# --------------------------------------------------------------------------
+async def generate_vehicle_image(desc: str) -> Optional[str]:
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        if not api_key:
+            return None
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"veh-{uuid.uuid4()}",
+            system_message="You generate clean, realistic product photos of cars.",
+        )
+        chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+        prompt = (
+            f"A realistic, high-quality photograph of a {desc} car. "
+            "Front three-quarter angle, the whole car centered and fully in frame, "
+            "parked on a plain soft light-gray studio background, even soft lighting, "
+            "no people, no text, no watermark, no license plate text."
+        )
+        text, images = await chat.send_message_multimodal_response(UserMessage(text=prompt))
+        if images:
+            img = images[0]
+            return f"data:{img['mime_type']};base64,{img['data']}"
+    except Exception as e:
+        logger.warning(f"vehicle image generation failed: {e}")
+    return None
+
+
+@api_router.get("/vehicle-image")
+async def vehicle_image(desc: str, user=Depends(get_current_user)):
+    key = " ".join(desc.strip().lower().split())
+    if not key:
+        raise HTTPException(400, "desc is required")
+    cached = await db.vehicle_images.find_one({"key": key})
+    if cached and cached.get("image"):
+        return {"image": cached["image"], "cached": True}
+    image = await generate_vehicle_image(key)
+    if image:
+        await db.vehicle_images.update_one(
+            {"key": key},
+            {"$set": {"key": key, "image": image, "created_at": now_ts()}},
+            upsert=True,
+        )
+    return {"image": image, "cached": False}
+
+
 # --------------------------------------------------------------------------
 # Auth routes
 # --------------------------------------------------------------------------
@@ -277,6 +329,7 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "selected_offer_id": None,
         "accepted_at": None,
         "final_fare": None,
+        "tip": 0,
         **fare,
         "created_at": now_ts(),
         "created_iso": datetime.now(timezone.utc).isoformat(),
@@ -399,7 +452,20 @@ async def track_ride(ride_id: str, user=Depends(get_current_user)):
     if track["status"] != ride["status"]:
         await db.rides.update_one({"id": ride_id}, {"$set": {"status": track["status"]}})
     return {**track, "pickup": ride["pickup"], "destination": ride["destination"],
-            "assigned_driver": ride.get("assigned_driver")}
+            "assigned_driver": ride.get("assigned_driver"), "tip": ride.get("tip", 0),
+            "final_fare": ride.get("final_fare")}
+
+
+@api_router.post("/rides/{ride_id}/tip")
+async def add_tip(ride_id: str, req: TipReq, user=Depends(get_current_user)):
+    ride = await db.rides.find_one({"id": ride_id})
+    if not ride:
+        raise HTTPException(404, "Ride not found")
+    if ride.get("status") not in ("in_progress", "completed"):
+        raise HTTPException(400, "You can tip during the trip or after it's completed.")
+    amount = max(0.0, round(float(req.amount), 2))
+    await db.rides.update_one({"id": ride_id}, {"$set": {"tip": amount}})
+    return {"tip": amount}
 
 
 # --------------------------------------------------------------------------
