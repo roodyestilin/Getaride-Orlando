@@ -166,7 +166,7 @@ export default function DriverHome() {
       ) : !online ? (
         <View style={styles.offlineMapWrap}>
           <MapView requestMarkers={reqMarkers} centerOn={driverLoc} style={StyleSheet.absoluteFill} />
-          <View style={styles.liveOverlay} pointerEvents="none">
+          <View style={[styles.liveOverlay, { pointerEvents: "none" }]}>
             <View style={styles.livePill}>
               <View style={styles.livePulse} />
               <Text style={styles.livePillText}>{reqMarkers.length} ride requests near you</Text>
