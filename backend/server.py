@@ -117,6 +117,7 @@ def public_user(u: dict) -> dict:
         "rating": u.get("rating", 5.0),
         "vehicle": u.get("vehicle"),
         "plate": u.get("plate"),
+        "online": u.get("online", False),
     }
 
 
@@ -437,6 +438,14 @@ async def ensure_driver_requests():
 @api_router.post("/driver/online")
 async def driver_online(req: StatusReq, user=Depends(get_current_user)):
     online = req.status == "online"
+    if not online:
+        # Block going offline while an accepted offer / active trip is underway.
+        active = await db.rides.find_one({
+            "driver_bid.driver_id": user["id"],
+            "status": {"$in": ["accepted", "arrived", "in_progress"]},
+        })
+        if active:
+            raise HTTPException(400, "Finish your active trip before going offline.")
     await db.users.update_one({"id": user["id"]}, {"$set": {"online": online}})
     if online:
         await ensure_driver_requests()
@@ -490,13 +499,13 @@ async def driver_active(user=Depends(get_current_user)):
         "status": {"$nin": ["completed", "cancelled", "declined"]},
     })
     if not ride:
-        return {"ride": None}
+        return {"ride": None, "online": user.get("online", False)}
     # auto-accept once accept_at passes
     if ride["status"] == "searching" and ride.get("accept_at") and now_ts() >= ride["accept_at"]:
         await db.rides.update_one({"id": ride["id"]}, {"$set": {"status": "accepted", "accepted_at": now_ts()}})
         ride["status"] = "accepted"
     ride.pop("_id", None)
-    return {"ride": ride}
+    return {"ride": ride, "online": user.get("online", False)}
 
 
 @api_router.post("/rides/{ride_id}/driver-status")

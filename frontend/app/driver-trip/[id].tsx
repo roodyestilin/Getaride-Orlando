@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
@@ -10,6 +10,7 @@ import MapView from "@/src/components/MapView";
 import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
 import { api } from "@/src/api";
+import { unlockSpeech } from "@/src/speech";
 import { colors, font, radius, shadow, spacing } from "@/src/theme";
 
 const NEXT: Record<string, { label: string; status: string }> = {
@@ -79,11 +80,21 @@ export default function DriverTrip() {
 
   useEffect(() => () => { Speech.stop(); }, []);
 
+  // Unlock mobile speech synthesis on the first touch of this screen (safety net).
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const handler = () => unlockSpeech();
+    window.addEventListener("pointerdown", handler, { once: true });
+    return () => window.removeEventListener("pointerdown", handler);
+  }, []);
+
   const recenter = () => {
+    unlockSpeech();
     Haptics.selectionAsync().catch(() => {});
     setRecenterKey((k) => k + 1);
   };
   const toggleVoice = () => {
+    unlockSpeech();
     setVoiceOn((v) => {
       if (v) Speech.stop();
       return !v;
@@ -118,6 +129,7 @@ export default function DriverTrip() {
   const advance = async () => {
     const step = NEXT[ride.status];
     if (!step) return;
+    unlockSpeech();
     setBusy(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     try {
@@ -269,11 +281,13 @@ export default function DriverTrip() {
 
             {step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls} testID="advance-status" />}
             {lockControls ? <Text style={styles.lockHint}>Trip controls unlock within 1 mile of drop-off · {remMi === Infinity ? "" : remMi.toFixed(1) + " mi left"}</Text> : null}
-            <Pressable testID="dt-cancel" onPress={cancelTrip} disabled={!canCancel} style={styles.cancelRow}>
-              <Text style={[styles.cancelText, !canCancel && styles.cancelDisabled]}>
-                {canCancel ? "Cancel trip" : `Cancel available in ${Math.floor(cancelSecs / 60)}:${(cancelSecs % 60).toString().padStart(2, "0")}`}
-              </Text>
-            </Pressable>
+            {ride.status === "accepted" || ride.status === "arrived" ? (
+              <Pressable testID="dt-cancel" onPress={cancelTrip} disabled={!canCancel} style={styles.cancelRow}>
+                <Text style={[styles.cancelText, !canCancel && styles.cancelDisabled]}>
+                  {canCancel ? "Cancel trip" : `Cancel available in ${Math.floor(cancelSecs / 60)}:${(cancelSecs % 60).toString().padStart(2, "0")}`}
+                </Text>
+              </Pressable>
+            ) : null}
           </>
         )}
       </View>

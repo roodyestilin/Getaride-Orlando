@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import * as Haptics from "expo-haptics";
 import Button from "@/src/components/Button";
 import Logo from "@/src/components/Logo";
 import { api } from "@/src/api";
+import { unlockSpeech } from "@/src/speech";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
 
 export default function DriverHome() {
@@ -18,16 +19,27 @@ export default function DriverHome() {
   const [selected, setSelected] = useState<any>(null);
   const [bidFare, setBidFare] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const onlineRef = useRef(online);
   onlineRef.current = online;
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 3500);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   const poll = useCallback(async () => {
     try {
       const a: any = await api("/driver/active");
       setActive(a.ride);
-      if (onlineRef.current && !a.ride) {
+      const isOnline = !!a.online;
+      setOnline(isOnline);
+      if (isOnline && !a.ride) {
         const r: any = await api("/driver/requests");
         setRequests(r.requests);
+      } else if (!isOnline) {
+        setRequests([]);
       }
     } catch {}
   }, []);
@@ -42,11 +54,20 @@ export default function DriverHome() {
 
   const toggleOnline = async () => {
     const next = !online;
-    setOnline(next);
+    if (!next && active) {
+      setNotice("Finish your active trip before going offline.");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await api("/driver/online", { method: "POST", body: { status: next ? "online" : "offline" } });
-    if (next) poll();
-    else setRequests([]);
+    setOnline(next);
+    try {
+      await api("/driver/online", { method: "POST", body: { status: next ? "online" : "offline" } });
+      if (next) poll();
+      else setRequests([]);
+    } catch (e: any) {
+      setOnline(!next);
+      setNotice(e?.message || "Couldn't update your status.");
+    }
   };
 
   const openBid = (req: any) => {
@@ -64,6 +85,7 @@ export default function DriverHome() {
 
   const submitBid = async (fare: number) => {
     setSubmitting(true);
+    unlockSpeech();
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       await api(`/rides/${selected.id}/bid`, { method: "POST", body: { fare } });
@@ -86,8 +108,15 @@ export default function DriverHome() {
         </Pressable>
       </View>
 
+      {notice ? (
+        <View style={styles.notice} testID="driver-notice">
+          <Ionicons name="information-circle" size={16} color={colors.brandPrimary} />
+          <Text style={styles.noticeText}>{notice}</Text>
+        </View>
+      ) : null}
+
       {active ? (
-        <Pressable testID="active-banner" style={styles.activeBanner} onPress={() => router.push(`/driver-trip/${active.id}`)}>
+        <Pressable testID="active-banner" style={styles.activeBanner} onPress={() => { unlockSpeech(); router.push(`/driver-trip/${active.id}`); }}>
           <View style={styles.activeIcon}>
             <Ionicons name="car-sport" size={22} color="#fff" />
           </View>
@@ -212,6 +241,8 @@ const styles = StyleSheet.create({
   onlinePillActive: { backgroundColor: "#dcfce7" },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   onlineText: { fontFamily: font.semibold, fontSize: 13, color: colors.muted },
+  notice: { flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: spacing.xl, marginBottom: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  noticeText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.brandPrimary },
   activeBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginHorizontal: spacing.xl, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.lg },
   activeIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   activeTitle: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },

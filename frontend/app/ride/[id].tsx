@@ -36,6 +36,11 @@ function milesBetween(a?: { lat: number; lng: number }, b?: { lat: number; lng: 
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
+function arriveClock(mins: number): string {
+  const d = new Date(Date.now() + mins * 60000);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 export default function RideScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -232,11 +237,19 @@ function SearchingSheet({ ride, offers, onAccept, selecting, onCancel, insets }:
 function TrackingSheet({ ride, track, status, onCancel, insets, rideId }: any) {
   const d = ride.assigned_driver || {};
   const eta = track?.eta_minutes ?? d.eta_minutes ?? 0;
+  const locked = status === "in_progress";
   return (
     <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
       <View style={styles.handle} />
       <View style={styles.statusBanner}>
-        <Text style={styles.statusBannerText}>{STATUS_TEXT[status] || status}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.statusBannerText}>{STATUS_TEXT[status] || status}</Text>
+          {eta > 0 ? (
+            <Text style={styles.arriveText}>
+              {status === "in_progress" ? "Arriving" : "Pickup"} ~{arriveClock(eta)}
+            </Text>
+          ) : null}
+        </View>
         {status !== "arrived" && (
           <View style={styles.etaPill}>
             <Text style={styles.etaNum}>{eta}</Text>
@@ -259,10 +272,11 @@ function TrackingSheet({ ride, track, status, onCancel, insets, rideId }: any) {
       </View>
 
       <View style={styles.actionRow}>
-        <ActionBtn icon="chatbubble-ellipses" label="Chat" onPress={() => router.push(`/chat/${rideId}`)} testID="open-chat" />
-        <ActionBtn icon="call" label="Call" onPress={() => Linking.openURL("tel:+14070000000")} testID="call-driver" />
-        <ActionBtn icon="close-circle" label="Cancel" onPress={onCancel} danger testID="cancel-trip" />
+        <ActionBtn icon="chatbubble-ellipses" label="Chat" disabled={locked} onPress={() => router.push(`/chat/${rideId}`)} testID="open-chat" />
+        <ActionBtn icon="call" label="Call" disabled={locked} onPress={() => Linking.openURL("tel:+14070000000")} testID="call-driver" />
+        <ActionBtn icon="close-circle" label="Cancel" disabled={locked} onPress={onCancel} danger testID="cancel-trip" />
       </View>
+      {locked ? <Text style={styles.lockHint}>Chat, call and cancel are paused while your trip is in progress.</Text> : null}
     </View>
   );
 }
@@ -282,9 +296,9 @@ function CompletedSheet({ ride, insets }: any) {
   );
 }
 
-function ActionBtn({ icon, label, onPress, danger, testID }: any) {
+function ActionBtn({ icon, label, onPress, danger, disabled, testID }: any) {
   return (
-    <Pressable testID={testID} onPress={onPress} style={styles.actionBtn}>
+    <Pressable testID={testID} onPress={onPress} disabled={disabled} style={[styles.actionBtn, disabled && { opacity: 0.4 }]}>
       <View style={[styles.actionIcon, danger && { backgroundColor: "#fee2e2" }]}>
         <Ionicons name={icon} size={22} color={danger ? colors.error : colors.brandPrimary} />
       </View>
@@ -357,6 +371,8 @@ const styles = StyleSheet.create({
   acceptText: { fontFamily: font.semibold, fontSize: 14, color: "#fff" },
   statusBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.lg },
   statusBannerText: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface, flex: 1 },
+  arriveText: { fontFamily: font.medium, fontSize: 13, color: colors.muted, marginTop: 2 },
+  lockHint: { fontFamily: font.medium, fontSize: 12, color: colors.muted, textAlign: "center", marginTop: spacing.md },
   etaPill: { alignItems: "center", backgroundColor: colors.brandTertiary, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.md },
   etaNum: { fontFamily: font.monoBold, fontSize: 22, color: colors.brandPrimary },
   etaUnit: { fontFamily: font.medium, fontSize: 10, color: colors.brandPrimary, marginTop: -2 },
