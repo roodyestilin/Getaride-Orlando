@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
@@ -31,6 +31,10 @@ export default function DriverHome() {
   }, [notice]);
 
   const [driverLoc, setDriverLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [queue, setQueue] = useState<any[]>([]);
+  const [secsLeft, setSecsLeft] = useState(25);
+  const seenReqRef = useRef<Set<string>>(new Set());
+  const current = queue[0] || null;
 
   // Detect the driver's location for the "go online" live-requests map.
   useEffect(() => {
@@ -57,14 +61,46 @@ export default function DriverHome() {
     }
   }, []);
 
-  // Scatter a few pulsing "live request" pins around the driver for the preview map.
+  // Map pins: real request pickups when online, scattered preview pins when offline.
   const reqMarkers = useMemo(() => {
+    if (online && requests.length) {
+      return requests.map((r: any) => ({ lat: r.pickup.lat, lng: r.pickup.lng }));
+    }
     if (!driverLoc) return [];
     const seeds = [
       [0.012, -0.018], [-0.02, 0.01], [0.022, 0.015], [-0.014, -0.02], [0.006, 0.026], [-0.026, 0.004],
     ];
     return seeds.map(([dlat, dlng]) => ({ lat: driverLoc.lat + dlat, lng: driverLoc.lng + dlng }));
-  }, [driverLoc?.lat, driverLoc?.lng]);
+  }, [online, requests, driverLoc?.lat, driverLoc?.lng]);
+
+  // Queue newly-arrived requests as map popups.
+  useEffect(() => {
+    if (!online) return;
+    const fresh = requests.filter((r: any) => !seenReqRef.current.has(r.id));
+    if (fresh.length) {
+      fresh.forEach((r: any) => seenReqRef.current.add(r.id));
+      setQueue((q) => [...q, ...fresh]);
+    }
+  }, [requests, online]);
+
+  // Each popup stays for 25 seconds, then the next one shows.
+  useEffect(() => {
+    if (!current) return;
+    setSecsLeft(25);
+    const start = Date.now();
+    const iv = setInterval(() => {
+      const left = 25 - Math.floor((Date.now() - start) / 1000);
+      if (left <= 0) {
+        clearInterval(iv);
+        setQueue((q) => q.slice(1));
+      } else {
+        setSecsLeft(left);
+      }
+    }, 250);
+    return () => clearInterval(iv);
+  }, [current?.id]);
+
+  const dismissCurrent = () => setQueue((q) => q.slice(1));
 
   const poll = useCallback(async () => {
     try {
@@ -77,6 +113,8 @@ export default function DriverHome() {
         setRequests(r.requests);
       } else if (!isOnline) {
         setRequests([]);
+        setQueue([]);
+        seenReqRef.current.clear();
       }
     } catch {}
   }, []);
@@ -179,68 +217,77 @@ export default function DriverHome() {
           </View>
         </View>
       ) : (
-        <>
-          <View style={styles.requestsHead}>
-            <Text style={styles.sectionTitle}>Nearby requests</Text>
-            <View style={styles.liveBadge}>
-              <ActivityIndicator size="small" color={colors.brandPrimary} />
-              <Text style={styles.liveText}>{requests.length} live</Text>
+        <View style={styles.offlineMapWrap}>
+          <MapView requestMarkers={reqMarkers} centerOn={driverLoc} style={StyleSheet.absoluteFill} />
+          <View style={[styles.liveOverlay, { pointerEvents: "none" }]}>
+            <View style={styles.livePill}>
+              <View style={styles.livePulse} />
+              <Text style={styles.livePillText}>{"You're online · "}{requests.length} nearby</Text>
             </View>
           </View>
-          <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, gap: spacing.md, paddingBottom: insets.bottom + 80 }}>
-            {requests.length === 0 ? (
-              <View style={styles.offlineState}>
-                <ActivityIndicator color={colors.brandPrimary} />
-                <Text style={styles.offlineSub}>Looking for ride requests…</Text>
-              </View>
-            ) : (
-              requests.map((req) => (
-                <View key={req.id} style={styles.reqCard} testID={`request-${req.id}`}>
-                  <View style={styles.reqTop}>
-                    <View style={styles.reqRating}>
-                      <Ionicons name="person-circle" size={20} color={colors.brandPrimary} />
-                      <Text style={styles.reqName}>{req.customer_name}</Text>
-                      <Ionicons name="star" size={12} color={colors.warning} />
-                      <Text style={styles.metaText}>{req.customer_rating}</Text>
-                    </View>
-                    <Text style={styles.reqRec}>${req.recommended_fare.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.reqRoute}>
-                    <View style={styles.routeCol}>
-                      <Ionicons name="ellipse" size={9} color={colors.success} />
-                      <View style={styles.routeLine} />
-                      <Ionicons name="location" size={12} color={colors.brandPrimary} />
-                    </View>
-                    <View style={{ flex: 1, gap: spacing.sm }}>
-                      <Text style={styles.routeText} numberOfLines={1}>{req.pickup.label}</Text>
-                      <Text style={styles.routeText} numberOfLines={1}>{req.destination.label}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.metaChips}>
-                    <View style={styles.metaChip}>
-                      <Ionicons name="navigate-outline" size={13} color={colors.brandPrimary} />
-                      <Text style={styles.metaChipText}>{req.pickup_eta_min ?? 5} min to pickup</Text>
-                    </View>
-                    <View style={styles.metaChip}>
-                      <Ionicons name="time-outline" size={13} color={colors.brandPrimary} />
-                      <Text style={styles.metaChipText}>{req.duration_min} min trip</Text>
-                    </View>
-                    <View style={styles.metaChip}>
-                      <Ionicons name="speedometer-outline" size={13} color={colors.brandPrimary} />
-                      <Text style={styles.metaChipText}>{req.distance_miles} mi</Text>
-                    </View>
-                  </View>
-                  <View style={styles.reqFooter}>
-                    <Text style={styles.reqMeta}>Range ${req.fare_min.toFixed(0)}–${req.fare_max.toFixed(0)}</Text>
-                    <Pressable testID={`bid-${req.id}`} onPress={() => openBid(req)} style={styles.bidBtn}>
-                      <Text style={styles.bidBtnText}>Set Fare</Text>
-                    </Pressable>
-                  </View>
+
+          {current ? (
+            <View style={[styles.popupCard, { bottom: insets.bottom + spacing.lg }]} testID={`request-${current.id}`}>
+              <View style={styles.popupTimerRow}>
+                <View style={styles.popupBadge}>
+                  <Ionicons name="flash" size={13} color="#fff" />
+                  <Text style={styles.popupBadgeText}>New ride request</Text>
                 </View>
-              ))
-            )}
-          </ScrollView>
-        </>
+                <View style={styles.popupCountdown}>
+                  <Ionicons name="time-outline" size={13} color={colors.muted} />
+                  <Text style={styles.popupSecs} testID="popup-countdown">{secsLeft}s</Text>
+                </View>
+              </View>
+              <View style={styles.reqTop}>
+                <View style={styles.reqRating}>
+                  <Ionicons name="person-circle" size={20} color={colors.brandPrimary} />
+                  <Text style={styles.reqName}>{current.customer_name}</Text>
+                  <Ionicons name="star" size={12} color={colors.warning} />
+                  <Text style={styles.metaText}>{current.customer_rating}</Text>
+                </View>
+                <Text style={styles.reqRec}>${current.recommended_fare.toFixed(2)}</Text>
+              </View>
+              <View style={styles.reqRoute}>
+                <View style={styles.routeCol}>
+                  <Ionicons name="ellipse" size={9} color={colors.success} />
+                  <View style={styles.routeLine} />
+                  <Ionicons name="location" size={12} color={colors.brandPrimary} />
+                </View>
+                <View style={{ flex: 1, gap: spacing.sm }}>
+                  <Text style={styles.routeText} numberOfLines={1}>{current.pickup.label}</Text>
+                  <Text style={styles.routeText} numberOfLines={1}>{current.destination.label}</Text>
+                </View>
+              </View>
+              <View style={styles.metaChips}>
+                <View style={styles.metaChip}>
+                  <Ionicons name="navigate-outline" size={13} color={colors.brandPrimary} />
+                  <Text style={styles.metaChipText}>{current.pickup_eta_min ?? 5} min to pickup</Text>
+                </View>
+                <View style={styles.metaChip}>
+                  <Ionicons name="time-outline" size={13} color={colors.brandPrimary} />
+                  <Text style={styles.metaChipText}>{current.duration_min} min trip</Text>
+                </View>
+                <View style={styles.metaChip}>
+                  <Ionicons name="speedometer-outline" size={13} color={colors.brandPrimary} />
+                  <Text style={styles.metaChipText}>{current.distance_miles} mi</Text>
+                </View>
+              </View>
+              <View style={styles.popupActions}>
+                <Pressable testID={`skip-${current.id}`} onPress={dismissCurrent} style={styles.skipBtn}>
+                  <Text style={styles.skipBtnText}>Skip</Text>
+                </Pressable>
+                <Pressable testID={`bid-${current.id}`} onPress={() => openBid(current)} style={styles.popupBidBtn}>
+                  <Text style={styles.bidBtnText}>Set Fare · ${current.fare_min.toFixed(0)}–${current.fare_max.toFixed(0)}</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.waitPill, { bottom: insets.bottom + spacing.lg }]}>
+              <ActivityIndicator size="small" color={colors.brandPrimary} />
+              <Text style={styles.waitText}>Waiting for ride requests near you…</Text>
+            </View>
+          )}
+        </View>
       )}
 
       {selected && (
@@ -298,6 +345,18 @@ const styles = StyleSheet.create({
   livePill: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface, borderRadius: 999, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, ...shadow },
   livePulse: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.success },
   livePillText: { fontFamily: font.semibold, fontSize: 13, color: colors.onSurface },
+  waitPill: { position: "absolute", left: spacing.lg, right: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: colors.surface, borderRadius: radius.lg, paddingVertical: spacing.lg, paddingHorizontal: spacing.lg, ...shadow },
+  waitText: { fontFamily: font.medium, fontSize: 14, color: colors.muted },
+  popupCard: { position: "absolute", left: spacing.lg, right: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, ...shadow },
+  popupTimerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  popupBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingVertical: 4, paddingHorizontal: spacing.md },
+  popupBadgeText: { fontFamily: font.semibold, fontSize: 12, color: "#fff" },
+  popupCountdown: { flexDirection: "row", alignItems: "center", gap: 4 },
+  popupSecs: { fontFamily: font.bold, fontSize: 14, color: colors.onSurface, minWidth: 30, textAlign: "right" },
+  popupActions: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xs },
+  skipBtn: { paddingHorizontal: spacing.lg, height: 48, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  skipBtnText: { fontFamily: font.semibold, fontSize: 14, color: colors.muted },
+  popupBidBtn: { flex: 1, height: 48, borderRadius: radius.md, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   offlineCard: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, ...shadow },
   offlineTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
   offlineSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center" },
