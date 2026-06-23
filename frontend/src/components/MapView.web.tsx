@@ -110,6 +110,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
+  const [loaded, setLoaded] = useState(false);
   const routeRef = useRef<number[][] | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const pickupM = useRef<mapboxgl.Marker | null>(null);
@@ -340,6 +341,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     fitBounds();
   };
 
+  const ready = !!size;
   useEffect(() => {
     if (!size || !containerRef.current || mapRef.current) return;
     const center = pickup || destination || navFrom || ORLANDO;
@@ -359,6 +361,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     });
     map.on("load", () => {
       loadedRef.current = true;
+      setLoaded(true);
       map.resize();
       updateAll();
     });
@@ -368,8 +371,11 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
       mapRef.current = null;
       loadedRef.current = false;
     };
+    // Create the map only once (when size first becomes available) and tear it
+    // down only on unmount — NOT on every pixel-level size change, which would
+    // otherwise reset the camera before async location updates land.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size]);
+  }, [ready]);
 
   useEffect(() => {
     if (mapRef.current && size) mapRef.current.resize();
@@ -389,6 +395,19 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     fitBounds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driver?.lat, driver?.lng]);
+
+  // When the pickup location changes (e.g. async geolocation / IP lookup resolves)
+  // and there is no destination yet, recenter the map onto the pickup pin so it
+  // is always framed and zoomed in for adjustment.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded || navMode || !pickup) return;
+    if (pickupM.current) pickupM.current.setLngLat([pickup.lng, pickup.lat]);
+    if (!destination && stops.length === 0) {
+      map.flyTo({ center: [pickup.lng, pickup.lat], zoom: 15.5, duration: 800, essential: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup?.lat, pickup?.lng, loaded]);
 
   useEffect(() => {
     const map = mapRef.current;

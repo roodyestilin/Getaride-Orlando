@@ -44,21 +44,45 @@ export default function CustomerHome() {
     }
   };
 
-  // Auto-detect the customer's current location on first load (web geolocation).
+  // Auto-detect the customer's current location on first load.
+  // Try precise GPS first; if unavailable (e.g. blocked inside an iframe/preview),
+  // fall back to IP-based geolocation so the pin still lands near the real location.
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof navigator === "undefined" || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setPickup({ lat: latitude, lng: longitude, label: "Locating…" });
-        const label = await reverseGeocode(longitude, latitude);
-        setPickup({ lat: latitude, lng: longitude, label });
-      },
-      () => {
-        // Permission denied or unavailable — keep the default Orlando pickup.
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-    );
+    if (Platform.OS !== "web") return;
+    let resolved = false;
+
+    const applyCoords = async (lat: number, lng: number) => {
+      if (resolved) return;
+      resolved = true;
+      setPickup({ lat, lng, label: "Locating…" });
+      const label = await reverseGeocode(lng, lat);
+      setPickup({ lat, lng, label });
+    };
+
+    const ipFallback = async () => {
+      if (resolved) return;
+      try {
+        const r = await fetch("https://ipapi.co/json/");
+        const j = await r.json();
+        if (typeof j.latitude === "number" && typeof j.longitude === "number") {
+          await applyCoords(j.latitude, j.longitude);
+        }
+      } catch {
+        // keep the default Orlando pickup
+      }
+    };
+
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => applyCoords(pos.coords.latitude, pos.coords.longitude),
+        () => ipFallback(),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+      // Safety net: some embedded browsers never invoke either callback.
+      setTimeout(ipFallback, 9000);
+    } else {
+      ipFallback();
+    }
   }, []);
 
   const onPickupChange = async (p: LatLng) => {
