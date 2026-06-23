@@ -10,6 +10,7 @@ import Logo from "@/src/components/Logo";
 import MapView from "@/src/components/MapView";
 import { api } from "@/src/api";
 import { unlockSpeech } from "@/src/speech";
+import { playRequestChime, unlockSound } from "@/src/sound";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
 
 export default function DriverHome() {
@@ -80,6 +81,7 @@ export default function DriverHome() {
     if (fresh.length) {
       fresh.forEach((r: any) => seenReqRef.current.add(r.id));
       setQueue((q) => [...q, ...fresh]);
+      playRequestChime();
     }
   }, [requests, online]);
 
@@ -134,6 +136,7 @@ export default function DriverHome() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    unlockSound();
     setOnline(next);
     try {
       await api("/driver/online", { method: "POST", body: { status: next ? "online" : "offline" } });
