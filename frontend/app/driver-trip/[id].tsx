@@ -47,16 +47,35 @@ export default function DriverTrip() {
   const [voiceOn, setVoiceOn] = useState(true);
   const voiceOnRef = useRef(true);
   voiceOnRef.current = voiceOn;
-  const lastSpokenRef = useRef("");
+  const voiceRef = useRef<string | undefined>(undefined);
+  const lastAnnounceIdRef = useRef<number>(-1);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const vs = await Speech.getAvailableVoicesAsync();
+        const en = vs.filter((v) => (v.language || "").toLowerCase().startsWith("en"));
+        const pick =
+          en.find((v) => /samantha|zira|aria|jenny|female|karen|moira|tessa|fiona|serena|catherine|joana|libby|sonia/i.test(`${v.name} ${v.identifier}`)) ||
+          en.find((v) => /google us english|google uk english female/i.test(`${v.name}`)) ||
+          en[0];
+        voiceRef.current = pick?.identifier;
+      } catch {}
+    })();
+  }, []);
+
+  const speak = useCallback((text: string) => {
+    Speech.stop();
+    Speech.speak(text, { voice: voiceRef.current, language: "en-US", pitch: 1.08, rate: 0.96 });
+  }, []);
 
   const handleNavStep = useCallback((step: any) => {
     setNavStep(step);
-    if (voiceOnRef.current && step.instruction && step.instruction !== lastSpokenRef.current) {
-      lastSpokenRef.current = step.instruction;
-      Speech.stop();
-      Speech.speak(step.instruction);
+    if (voiceOnRef.current && step.announce && step.announceId !== lastAnnounceIdRef.current) {
+      lastAnnounceIdRef.current = step.announceId;
+      speak(step.announce);
     }
-  }, []);
+  }, [speak]);
 
   useEffect(() => () => { Speech.stop(); }, []);
 
@@ -141,7 +160,7 @@ export default function DriverTrip() {
         <MapView
           navFrom={navFrom}
           navTo={navTo}
-          follow={ride.status === "in_progress"}
+          follow={navActive}
           recenterKey={recenterKey}
           onRouteInfo={setNavInfo}
           onNavStep={handleNavStep}

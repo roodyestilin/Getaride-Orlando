@@ -5,7 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { colors } from "@/src/theme";
 
 export type LatLng = { lat: number; lng: number; label?: string };
-export type NavStep = { instruction: string; distanceText: string; type?: string; modifier?: string };
+export type NavStep = { instruction: string; distanceText: string; type?: string; modifier?: string; announce?: string; announceId?: number };
 export type RouteInfo = { distanceText: string; durationText: string };
 
 const TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
@@ -85,6 +85,18 @@ function fmtDist(m: number): string {
   return `${Math.max(0, Math.round(ft / 50) * 50)} ft`;
 }
 
+function friendlyDist(m: number): string {
+  const ft = m * 3.28084;
+  if (ft < 120) return "now";
+  if (ft < 850) return `${Math.round(ft / 100) * 100} feet`;
+  const mi = m / 1609.34;
+  if (mi < 0.35) return "a quarter mile";
+  if (mi < 0.65) return "half a mile";
+  if (mi < 1.2) return "1 mile";
+  return `${mi.toFixed(1)} miles`;
+}
+
+
 export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -98,6 +110,10 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
   const animRef = useRef<number | null>(null);
   const tickRef = useRef<any>(null);
   const navStateRef = useRef<NavStep | null>(null);
+  const announceIdRef = useRef(0);
+  const farSetRef = useRef<Set<number>>(new Set());
+  const nearSetRef = useRef<Set<number>>(new Set());
+  const arrivedRef = useRef(false);
 
   const navMode = !!(navFrom && navTo);
   const followRef = useRef(false);
@@ -152,35 +168,62 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
       stepEnd.push(acc);
     });
     onRouteInfo?.({ distanceText: `${(total / 1609.34).toFixed(1)} mi`, durationText: `${Math.max(1, Math.round(durationSec / 60))} min` });
-    const ANIM_MS = Math.min(30000, Math.max(14000, durationSec * 250));
+    const ANIM_MS = Math.min(34000, Math.max(16000, durationSec * 280));
     const start = performance.now();
+    farSetRef.current = new Set();
+    nearSetRef.current = new Set();
+    arrivedRef.current = false;
     if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat(coords[0] as any).addTo(map);
     if (followRef.current) {
       followingRef.current = true;
-      map.easeTo({ center: coords[0] as any, zoom: 15.5, bearing: 0, pitch: 0, padding: { top: 150, bottom: 340, left: 20, right: 20 }, duration: 700 });
+      map.easeTo({ center: coords[0] as any, zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 700 });
     }
+    const first = (steps[1] || steps[0])?.maneuver?.instruction;
+    if (first) navStateRef.current = { instruction: first, distanceText: fmtDist(stepEnd[0] || 0), announce: first, announceId: ++announceIdRef.current };
     const frame = (now: number) => {
       const t = Math.min(1, (now - start) / ANIM_MS);
       const traveled = t * total;
       const pos = positionAt(traveled, coords, segCum);
-      driverM.current?.setLngLat(pos as any);
-      if (followRef.current && followingRef.current) mapRef.current?.setCenter(pos as any);
       let si = 0;
       while (si < stepEnd.length - 1 && traveled > stepEnd[si]) si++;
       const distToNext = Math.max(0, stepEnd[si] - traveled);
-      const mv = steps[si]?.maneuver || {};
+      const upMv = (steps[si + 1] || steps[si])?.maneuver || {};
+      const instr = t >= 1 ? "You have arrived" : upMv.instruction || "Continue straight";
+      driverM.current?.setLngLat(pos as any);
+      if (followRef.current && followingRef.current) {
+        const m2 = mapRef.current!;
+        m2.setCenter(pos as any);
+        const dz = t >= 1 ? 16.6 : distToNext < 70 ? 18 : distToNext < 170 ? 17.2 : 16.6;
+        const cur = m2.getZoom();
+        if (Math.abs(cur - dz) > 0.03) m2.setZoom(cur + (dz - cur) * 0.08);
+      }
+      let announce: string | undefined;
+      if (t >= 1) {
+        if (!arrivedRef.current) {
+          arrivedRef.current = true;
+          announce = "You have arrived.";
+        }
+      } else if (!farSetRef.current.has(si) && distToNext < 320) {
+        farSetRef.current.add(si);
+        announce = `In ${friendlyDist(distToNext)}, ${instr}`;
+      } else if (!nearSetRef.current.has(si) && distToNext < 50) {
+        nearSetRef.current.add(si);
+        announce = instr;
+      }
       navStateRef.current = {
-        instruction: t >= 1 ? "You have arrived" : mv.instruction || "Proceed to route",
+        instruction: instr,
         distanceText: t >= 1 ? "" : fmtDist(distToNext),
-        type: mv.type,
-        modifier: mv.modifier,
+        type: upMv.type,
+        modifier: upMv.modifier,
+        announce: announce ?? navStateRef.current?.announce,
+        announceId: announce ? ++announceIdRef.current : navStateRef.current?.announceId,
       };
       if (t < 1) animRef.current = requestAnimationFrame(frame);
     };
     animRef.current = requestAnimationFrame(frame);
     tickRef.current = setInterval(() => {
       if (navStateRef.current) onNavStep?.(navStateRef.current);
-    }, 400);
+    }, 350);
   };
 
   const updateRoute = async () => {
@@ -342,7 +385,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     followingRef.current = true;
     if (navMode && followRef.current) {
       const c = driverM.current?.getLngLat();
-      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 15.5, bearing: 0, pitch: 0, padding: { top: 150, bottom: 340, left: 20, right: 20 }, duration: 500 });
+      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 500 });
     } else {
       map.easeTo({ bearing: 0, pitch: 0, duration: 300 });
       fitBounds();
