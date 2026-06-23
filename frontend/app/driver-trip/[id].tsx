@@ -89,6 +89,16 @@ export default function DriverTrip() {
       return !v;
     });
   };
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const i = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(i);
+  }, []);
+  const cancelTrip = async () => {
+    Speech.stop();
+    await api(`/rides/${id}/driver-status`, { method: "POST", body: { status: "cancelled" } });
+    router.replace("/(driver)");
+  };
 
   const poll = useCallback(async () => {
     if (doneRef.current) return;
@@ -153,6 +163,10 @@ export default function DriverTrip() {
   const navActive = ride.status === "accepted" || ride.status === "in_progress";
   const navFrom = ride.status === "in_progress" ? ride.pickup : ride.assigned_driver?.start;
   const navTo = ride.status === "in_progress" ? ride.destination : ride.pickup;
+  const remMi = (navStep?.remainingM ?? Infinity) / 1609.34;
+  const lockControls = ride.status === "in_progress" && remMi > 1;
+  const cancelSecs = ride.accepted_at ? Math.max(0, Math.ceil(240 - (Date.now() / 1000 - ride.accepted_at))) : 240;
+  const canCancel = cancelSecs <= 0;
 
   return (
     <View style={styles.container}>
@@ -191,7 +205,7 @@ export default function DriverTrip() {
             <Text style={styles.navInstruction} numberOfLines={1}>{navStep.instruction}</Text>
             {navInfo ? (
               <Text style={styles.navMeta}>
-                {ride.status === "in_progress" ? "To destination" : "To pickup"} · {navInfo.distanceText} · {navInfo.durationText}
+                {ride.status === "in_progress" ? "To destination" : "To pickup"} · {navInfo.distanceText} · {navInfo.durationText} · Arrive {navInfo.arrivalText}
               </Text>
             ) : null}
           </View>
@@ -232,11 +246,11 @@ export default function DriverTrip() {
                 </View>
               </View>
               <View style={styles.iconActions}>
-                <Pressable testID="dt-chat" onPress={() => router.push(`/chat/${id}`)} style={styles.smallIcon}>
-                  <Ionicons name="chatbubble-ellipses" size={20} color={colors.brandPrimary} />
+                <Pressable testID="dt-chat" disabled={lockControls} onPress={() => router.push(`/chat/${id}`)} style={[styles.smallIcon, lockControls && styles.iconDisabled]}>
+                  <Ionicons name="chatbubble-ellipses" size={20} color={lockControls ? colors.muted : colors.brandPrimary} />
                 </Pressable>
-                <Pressable testID="dt-call" onPress={() => Linking.openURL("tel:+14070000000")} style={styles.smallIcon}>
-                  <Ionicons name="call" size={20} color={colors.brandPrimary} />
+                <Pressable testID="dt-call" disabled={lockControls} onPress={() => Linking.openURL("tel:+14070000000")} style={[styles.smallIcon, lockControls && styles.iconDisabled]}>
+                  <Ionicons name="call" size={20} color={lockControls ? colors.muted : colors.brandPrimary} />
                 </Pressable>
               </View>
             </View>
@@ -253,7 +267,13 @@ export default function DriverTrip() {
               </View>
             </View>
 
-            {step && <Button title={step.label} onPress={advance} loading={busy} testID="advance-status" />}
+            {step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls} testID="advance-status" />}
+            {lockControls ? <Text style={styles.lockHint}>Trip controls unlock within 1 mile of drop-off · {remMi === Infinity ? "" : remMi.toFixed(1) + " mi left"}</Text> : null}
+            <Pressable testID="dt-cancel" onPress={cancelTrip} disabled={!canCancel} style={styles.cancelRow}>
+              <Text style={[styles.cancelText, !canCancel && styles.cancelDisabled]}>
+                {canCancel ? "Cancel trip" : `Cancel available in ${Math.floor(cancelSecs / 60)}:${(cancelSecs % 60).toString().padStart(2, "0")}`}
+              </Text>
+            </Pressable>
           </>
         )}
       </View>
@@ -287,6 +307,11 @@ const styles = StyleSheet.create({
   metaDot: { color: colors.muted, marginHorizontal: 2 },
   iconActions: { flexDirection: "row", gap: spacing.sm },
   smallIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+  iconDisabled: { backgroundColor: colors.surfaceSecondary, opacity: 0.6 },
+  lockHint: { fontFamily: font.medium, fontSize: 12, color: colors.muted, textAlign: "center", marginTop: spacing.sm },
+  cancelRow: { alignItems: "center", paddingVertical: spacing.md, marginTop: spacing.xs },
+  cancelText: { fontFamily: font.semibold, fontSize: 14, color: colors.error },
+  cancelDisabled: { color: colors.muted },
   routeBox: { flexDirection: "row", gap: spacing.md, paddingVertical: spacing.md, marginBottom: spacing.md },
   routeCol: { alignItems: "center", paddingTop: 2 },
   routeLine: { width: 2, flex: 1, backgroundColor: colors.border, marginVertical: 2 },

@@ -5,8 +5,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { colors } from "@/src/theme";
 
 export type LatLng = { lat: number; lng: number; label?: string };
-export type NavStep = { instruction: string; distanceText: string; type?: string; modifier?: string; announce?: string; announceId?: number };
-export type RouteInfo = { distanceText: string; durationText: string };
+export type NavStep = { instruction: string; distanceText: string; type?: string; modifier?: string; announce?: string; announceId?: number; remainingM?: number };
+export type RouteInfo = { distanceText: string; durationText: string; arrivalText: string };
 
 const TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
 mapboxgl.accessToken = TOKEN;
@@ -96,6 +96,15 @@ function friendlyDist(m: number): string {
   return `${mi.toFixed(1)} miles`;
 }
 
+function arrivalTime(durationSec: number): string {
+  const d = new Date(Date.now() + durationSec * 1000);
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${m.toString().padStart(2, "0")} ${ap}`;
+}
+
 
 export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
@@ -167,7 +176,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
       acc += s.distance || 0;
       stepEnd.push(acc);
     });
-    onRouteInfo?.({ distanceText: `${(total / 1609.34).toFixed(1)} mi`, durationText: `${Math.max(1, Math.round(durationSec / 60))} min` });
+    onRouteInfo?.({ distanceText: `${(total / 1609.34).toFixed(1)} mi`, durationText: `${Math.max(1, Math.round(durationSec / 60))} min`, arrivalText: arrivalTime(durationSec) });
     const ANIM_MS = Math.min(34000, Math.max(16000, durationSec * 280));
     const start = performance.now();
     farSetRef.current = new Set();
@@ -213,6 +222,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
       navStateRef.current = {
         instruction: instr,
         distanceText: t >= 1 ? "" : fmtDist(distToNext),
+        remainingM: t >= 1 ? 0 : Math.max(0, total - traveled),
         type: upMv.type,
         modifier: upMv.modifier,
         announce: announce ?? navStateRef.current?.announce,
@@ -385,7 +395,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     followingRef.current = true;
     if (navMode && followRef.current) {
       const c = driverM.current?.getLngLat();
-      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 500 });
+      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 16.6, bearing: 0, pitch: 55, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 500 });
     } else {
       map.easeTo({ bearing: 0, pitch: 0, duration: 300 });
       fitBounds();
