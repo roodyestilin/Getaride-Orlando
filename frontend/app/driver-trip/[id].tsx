@@ -40,7 +40,7 @@ export default function DriverTrip() {
   const [done, setDone] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [navInfo, setNavInfo] = useState<{ distanceText: string; durationText: string } | null>(null);
+  const [navInfo, setNavInfo] = useState<{ distanceText: string; durationText: string; arrivalText: string } | null>(null);
   const [navStep, setNavStep] = useState<{ instruction: string; distanceText: string; type?: string; modifier?: string } | null>(null);
   const doneRef = useRef(false);
   const [recenterKey, setRecenterKey] = useState(0);
