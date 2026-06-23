@@ -283,7 +283,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     }
     if (pts.length === 0) return;
     if (pts.length === 1) {
-      map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 13, duration: 400 });
+      map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 15.5, duration: 500 });
       return;
     }
     const b = new mapboxgl.LngLatBounds();
