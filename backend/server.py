@@ -461,6 +461,8 @@ async def add_tip(ride_id: str, req: TipReq, user=Depends(get_current_user)):
     ride = await db.rides.find_one({"id": ride_id})
     if not ride:
         raise HTTPException(404, "Ride not found")
+    if ride.get("customer_id") != user["id"]:
+        raise HTTPException(403, "Only the rider can tip on this trip.")
     if ride.get("status") not in ("in_progress", "completed"):
         raise HTTPException(400, "You can tip during the trip or after it's completed.")
     amount = max(0.0, round(float(req.amount), 2))
