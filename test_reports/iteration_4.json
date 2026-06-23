@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 4 covered the two new UI changes + 4 regression areas — all PASSED on the live preview URL (mobile 390x844, Playwright). (A) DRIVER offline screen: After login (driver@getaride.com / Drive1234) the driver was Offline; /(driver)/index.tsx rendered the new full-bleed Mapbox map with 6 pulsing purple request pins around the driver car icon, the top pill 'N ride requests near you' (showed '6 ride requests near you'), and the bottom 'You're offline' card with the 'Go Online' button (testID go-online). Tapping go-online flipped the pill to Online (testID online-toggle), populated 5 'Nearby requests' cards from /api/driver/requests, no crash. Toggling back to Offline re-rendered the map cleanly. (B) CUSTOMER voice announcement statuses: started a fresh ride (rider@getaride.com / Ride1234) → accepted first offer → on /ride/[id] tracking, observed all three status texts at expected times without any crash: 'Driver is on the way' (driver_enroute, t≈0s) → 'Your driver has arrived' (arrived, t≈25s) → 'Enjoy your ride' (in_progress, t≈30s) → trip auto-completed at t≈85s with CompletedSheet showing fare $2591.00 + tip chips + Done button (testID trip-done). Audio cannot be verified headlessly (per request), but the speak() helper invocations did NOT cause a tracking-screen crash. (C) REGRESSIONS — Customer offers screen: 3+ vehicle thumbnails (testID offer-vehicle-*) rendered with 'mi away' chips and the requested-route box; map (testID map-view) rendered. Customer tracking map: pickup pin, destination pin, route line, and moving driver car icon all framed; track-vehicle thumbnail visible on the right of the driver row. Driver navigation /driver-trip/[id]: turn-by-turn nav-banner ('Turn right · 150 ft · To pickup · 3.4 mi · 12 min · Arrive 10:11 PM'), recenter-btn, voice-btn and advance-status ('I've Arrived') all rendered over the routed Mapbox map with car icon, no crash. Console: zero JS errors / no React Native red screen; only pre-existing RN-Web cosmetic shadow*/pointerEvents deprecation warnings (already carried over from iter1–3) and a benign WebGL GL_CLOSE_PATH_NV performance warning + Metro 1006 disconnect (harmless in preview). Note (per request): geolocation falls back to Council Bluffs, Iowa in the headless browser — fares look large (e.g. $2591) and pins appear over Iowa; this is EXPECTED, not a bug.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN-Web shadow* (carry-over)", "issue": "Console still warns: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Carried over from prior iterations. Reference: /app/frontend/src/theme.ts shadow/shadowSoft (used by offlineCard, livePill, etc. in /app/frontend/app/(driver)/index.tsx)."},
+      {"component": "RN-Web pointerEvents (carry-over)", "issue": "Console still warns: 'props.pointerEvents is deprecated. Use style.pointerEvents'. The new live-overlay in /app/frontend/app/(driver)/index.tsx line 169 uses pointerEvents=\"none\" as a prop — switching to style={{pointerEvents:'none'}} would also silence this for the new code."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_3.json (prior round)",
+    "/app/test_reports/iteration_4.json (this round)"
+  ],
+  "action_items": [
+    "(carry-over) Replace shadow*/pointerEvents prop usage with style.boxShadow / style.pointerEvents in /app/frontend/src/theme.ts and in the new live-overlay View on /app/frontend/app/(driver)/index.tsx:169 to silence RN-Web deprecation warnings."
+  ],
+  "critical_code_review_comments": [
+    "MapView.web.tsx requestMarkers effect (lines 437–463) uses JSON.stringify(requestMarkers) in the dependency array, which works but re-runs on every parent render where the seeded markers array identity changes. With the current 6 seeded pins this is fine; if requestMarkers ever becomes high-frequency (e.g. live socket updates), prefer keying on a length+hash to avoid stringify cost.",
+    "/app/frontend/app/(driver)/index.tsx:175 uses pointerEvents='none' as a prop on the live-overlay View — RN-Web has deprecated this. Move to style.pointerEvents.",
+    "speech.ts pickFemaleVoice() returns en[0] when no female voice matches the regex — on desktop Chrome where the first English voice is often male this means the 'female voice' guarantee is best-effort, not guaranteed. Consider preferring voices whose name contains 'Female' or known female identifiers across more locales (Microsoft Aria/Jenny/Sonia) before falling back to en[0]. Functionality is fine; just a quality note."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_4.json (new)"
+  ],
+  "success_rate": {"backend": "skipped (not requested)", "frontend": "100% (6/6 review items verified end-to-end)"},
+  "seed_data_creation": "None — used seeded customer rider@getaride.com / Ride1234 and driver driver@getaride.com / Drive1234. Two customer rides were created during testing and both auto-completed cleanly; one driver bid was submitted and accepted, leaving driver in an active trip at end of run (will auto-complete via simulation).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Driver may end this run with an active trip (id starts with c05fb20e on the preview); the driver-home will then show active-banner instead of the offline map. To re-verify the offline map, wait ~90s for the simulation to complete the active trip, or use a different driver account. Voice announcements are tested only structurally (no crash); to truly hear the female voice you need a non-headless browser session and a real user gesture before status transitions — the unlockSpeech() call on accept-offer satisfies this in normal use.",
+  "rca_of_issue": "N/A — both new features and all four regression areas pass; no bugs found."
+}

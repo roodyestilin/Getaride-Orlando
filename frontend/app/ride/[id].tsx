@@ -19,6 +19,7 @@ import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
 import VehicleImage from "@/src/components/VehicleImage";
 import { api } from "@/src/api";
+import { speak, unlockSpeech } from "@/src/speech";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
 
 const vehicleDesc = (x: any) => `${x?.color || ""} ${x?.vehicle || ""}`.trim();
@@ -56,13 +57,30 @@ export default function RideScreen() {
   const [selecting, setSelecting] = useState<string | null>(null);
   const statusRef = useRef(status);
   statusRef.current = status;
+  const spokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     api(`/rides/${id}`).then((r: any) => {
       setRide(r.ride);
       setStatus(r.ride.status);
+      // Don't announce the status that was already active when the screen opened.
+      spokenRef.current = r.ride.status;
     });
   }, [id]);
+
+  // Female-voice announcements at each trip status change.
+  useEffect(() => {
+    const phrases: Record<string, string> = {
+      driver_enroute: "Your driver is now on the way.",
+      arrived: "Your driver has arrived.",
+      in_progress: "Enjoy your ride.",
+    };
+    const phrase = phrases[status];
+    if (phrase && spokenRef.current !== status) {
+      spokenRef.current = status;
+      speak(phrase);
+    }
+  }, [status]);
 
   const tick = useCallback(async () => {
     try {
@@ -85,6 +103,7 @@ export default function RideScreen() {
 
   const accept = async (offer: any) => {
     setSelecting(offer.id);
+    unlockSpeech();
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       const r: any = await api(`/rides/${id}/select`, { method: "POST", body: { offer_id: offer.id } });

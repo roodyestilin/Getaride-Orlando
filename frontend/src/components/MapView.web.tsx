@@ -22,6 +22,8 @@ type Props = {
   style?: any;
   showRoute?: boolean;
   autoFit?: boolean;
+  requestMarkers?: LatLng[];
+  centerOn?: LatLng | null;
   onPickupChange?: (p: LatLng) => void;
   onRouteInfo?: (info: RouteInfo) => void;
   onNavStep?: (step: NavStep) => void;
@@ -41,6 +43,26 @@ function makeDriverEl(): HTMLDivElement {
   el.innerHTML =
     `<svg width="19" height="19" viewBox="0 0 512 512" fill="#fff">` +
     `<path d="M135.2 117.4 109.1 192H402.9l-26.1-74.6C372.3 104.6 360.2 96 346.6 96H165.4c-13.6 0-25.7 8.6-30.2 21.4zM39.6 196.8 74.8 96.3C88.3 57.8 124.6 32 165.4 32H346.6c40.8 0 77.1 25.8 90.6 64.3l35.2 100.5c23.2 9.6 39.6 32.5 39.6 59.2V400v48c0 17.7-14.3 32-32 32H448c-17.7 0-32-14.3-32-32V400H96v48c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32V400 256c0-26.7 16.4-49.6 39.6-59.2zM128 288a32 32 0 1 0 -64 0 32 32 0 1 0 64 0zm288 32a32 32 0 1 0 0-64 32 32 0 1 0 0 64z"/></svg>`;
+  return el;
+}
+
+function ensurePulseStyle() {
+  if (typeof document === "undefined" || document.getElementById("gar-pulse-style")) return;
+  const s = document.createElement("style");
+  s.id = "gar-pulse-style";
+  s.textContent = "@keyframes gar-pulse{0%{transform:scale(.5);opacity:.75}70%{transform:scale(2.8);opacity:0}100%{opacity:0}}";
+  document.head.appendChild(s);
+}
+
+function makeRequestEl(): HTMLDivElement {
+  ensurePulseStyle();
+  const el = document.createElement("div");
+  el.style.cssText = "position:relative;width:24px;height:24px;";
+  el.innerHTML =
+    `<span style="position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:${colors.brandPrimary}40;animation:gar-pulse 1.8s ease-out infinite;"></span>` +
+    `<span style="position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:${colors.brandPrimary};border:2.5px solid #fff;box-shadow:0 2px 7px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">` +
+    `<svg width="9" height="9" viewBox="0 0 384 512" fill="#fff"><path d="M215.7 499.2C267 435 384 279.4 384 192C384 86 298 0 192 0S0 86 0 192c0 87.4 117 243 168.3 307.2c12.3 15.3 35.1 15.3 47.4 0z"/></svg>` +
+    `</span>`;
   return el;
 }
 
@@ -106,7 +128,7 @@ function arrivalTime(durationSec: number): string {
 }
 
 
-export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
+export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -117,6 +139,8 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
   const destM = useRef<mapboxgl.Marker | null>(null);
   const driverM = useRef<mapboxgl.Marker | null>(null);
   const stopMs = useRef<mapboxgl.Marker[]>([]);
+  const reqMs = useRef<mapboxgl.Marker[]>([]);
+  const youM = useRef<mapboxgl.Marker | null>(null);
   const animRef = useRef<number | null>(null);
   const tickRef = useRef<any>(null);
   const navStateRef = useRef<NavStep | null>(null);
@@ -344,7 +368,7 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
   const ready = !!size;
   useEffect(() => {
     if (!size || !containerRef.current || mapRef.current) return;
-    const center = pickup || destination || navFrom || ORLANDO;
+    const center = pickup || destination || navFrom || centerOn || ORLANDO;
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
@@ -408,6 +432,35 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickup?.lat, pickup?.lng, loaded]);
+
+  // Live-requests preview markers (driver "go online" screen).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    reqMs.current.forEach((m) => m.remove());
+    reqMs.current = [];
+    const list = requestMarkers || [];
+    list.forEach((p) => {
+      const m = new mapboxgl.Marker({ element: makeRequestEl() }).setLngLat([p.lng, p.lat]).addTo(map);
+      reqMs.current.push(m);
+    });
+    if (centerOn) {
+      if (!youM.current) {
+        youM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat([centerOn.lng, centerOn.lat]).addTo(map);
+      } else {
+        youM.current.setLngLat([centerOn.lng, centerOn.lat]);
+      }
+    }
+    if (list.length) {
+      const b = new mapboxgl.LngLatBounds();
+      list.forEach((p) => b.extend([p.lng, p.lat] as any));
+      if (centerOn) b.extend([centerOn.lng, centerOn.lat] as any);
+      map.fitBounds(b, { padding: 60, maxZoom: 13.5, duration: 700 });
+    } else if (centerOn) {
+      map.easeTo({ center: [centerOn.lng, centerOn.lat], zoom: 12.5, duration: 600 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(requestMarkers), centerOn?.lat, centerOn?.lng, loaded]);
 
   useEffect(() => {
     const map = mapRef.current;

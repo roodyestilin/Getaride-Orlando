@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 
 import Button from "@/src/components/Button";
 import Logo from "@/src/components/Logo";
+import MapView from "@/src/components/MapView";
 import { api } from "@/src/api";
 import { unlockSpeech } from "@/src/speech";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
@@ -28,6 +29,42 @@ export default function DriverHome() {
     const t = setTimeout(() => setNotice(null), 3500);
     return () => clearTimeout(t);
   }, [notice]);
+
+  const [driverLoc, setDriverLoc] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Detect the driver's location for the "go online" live-requests map.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    let done = false;
+    const apply = (lat: number, lng: number) => { if (!done) { done = true; setDriverLoc({ lat, lng }); } };
+    const ipFallback = async () => {
+      if (done) return;
+      try {
+        const r = await fetch("https://ipapi.co/json/");
+        const j = await r.json();
+        if (typeof j.latitude === "number" && typeof j.longitude === "number") apply(j.latitude, j.longitude);
+      } catch {}
+    };
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (p) => apply(p.coords.latitude, p.coords.longitude),
+        () => ipFallback(),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+      setTimeout(ipFallback, 9000);
+    } else {
+      ipFallback();
+    }
+  }, []);
+
+  // Scatter a few pulsing "live request" pins around the driver for the preview map.
+  const reqMarkers = useMemo(() => {
+    if (!driverLoc) return [];
+    const seeds = [
+      [0.012, -0.018], [-0.02, 0.01], [0.022, 0.015], [-0.014, -0.02], [0.006, 0.026], [-0.026, 0.004],
+    ];
+    return seeds.map(([dlat, dlng]) => ({ lat: driverLoc.lat + dlat, lng: driverLoc.lng + dlng }));
+  }, [driverLoc?.lat, driverLoc?.lng]);
 
   const poll = useCallback(async () => {
     try {
@@ -127,11 +164,19 @@ export default function DriverHome() {
           <Ionicons name="chevron-forward" size={22} color={colors.brandPrimary} />
         </Pressable>
       ) : !online ? (
-        <View style={styles.offlineState}>
-          <Ionicons name="car-outline" size={56} color={colors.surfaceTertiary} />
-          <Text style={styles.offlineTitle}>{"You're offline"}</Text>
-          <Text style={styles.offlineSub}>Go online to start receiving ride requests near you.</Text>
-          <Button title="Go Online" onPress={toggleOnline} testID="go-online" style={{ marginTop: spacing.lg, alignSelf: "stretch" }} />
+        <View style={styles.offlineMapWrap}>
+          <MapView requestMarkers={reqMarkers} centerOn={driverLoc} style={StyleSheet.absoluteFill} />
+          <View style={styles.liveOverlay} pointerEvents="none">
+            <View style={styles.livePill}>
+              <View style={styles.livePulse} />
+              <Text style={styles.livePillText}>{reqMarkers.length} ride requests near you</Text>
+            </View>
+          </View>
+          <View style={[styles.offlineCard, { paddingBottom: insets.bottom + spacing.lg }]}>
+            <Text style={styles.offlineTitle}>{"You're offline"}</Text>
+            <Text style={styles.offlineSub}>Go online to start accepting these nearby ride requests.</Text>
+            <Button title="Go Online" onPress={toggleOnline} testID="go-online" style={{ marginTop: spacing.lg, alignSelf: "stretch" }} />
+          </View>
         </View>
       ) : (
         <>
@@ -248,6 +293,12 @@ const styles = StyleSheet.create({
   activeTitle: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },
   activeSub: { fontFamily: font.regular, fontSize: 12, color: colors.onSurfaceSecondary, marginTop: 2 },
   offlineState: { alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.xl, marginTop: spacing["3xl"] },
+  offlineMapWrap: { flex: 1, position: "relative" },
+  liveOverlay: { position: "absolute", top: spacing.md, left: 0, right: 0, alignItems: "center" },
+  livePill: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface, borderRadius: 999, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, ...shadow },
+  livePulse: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.success },
+  livePillText: { fontFamily: font.semibold, fontSize: 13, color: colors.onSurface },
+  offlineCard: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, ...shadow },
   offlineTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
   offlineSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center" },
   requestsHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginBottom: spacing.md },
