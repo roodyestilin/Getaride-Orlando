@@ -307,18 +307,15 @@ function TrackingSheet({ ride, track, status, onCancel, insets, rideId, tip, onT
         <VehicleImage desc={vehicleDesc(d)} width={96} height={62} testID="track-vehicle" />
       </View>
 
-      <View style={styles.actionRow}>
-        {!locked ? (
-          <>
-            <ActionBtn icon="chatbubble-ellipses" label="Chat" onPress={() => router.push(`/chat/${rideId}`)} testID="open-chat" />
-            <ActionBtn icon="call" label="Call" onPress={() => Linking.openURL("tel:+14070000000")} testID="call-driver" />
-          </>
-        ) : null}
-        <ActionBtn icon="close-circle" label="Cancel" disabled={locked} onPress={onCancel} danger testID="cancel-trip" />
-      </View>
-      {locked ? <Text style={styles.lockHint}>Chat and call are unavailable while your trip is in progress.</Text> : null}
-
-      {status === "in_progress" ? <TipSection tip={tip} onTip={onTip} /> : null}
+      {!locked ? (
+        <View style={styles.actionRow}>
+          <ActionBtn icon="chatbubble-ellipses" label="Chat" onPress={() => router.push(`/chat/${rideId}`)} testID="open-chat" />
+          <ActionBtn icon="call" label="Call" onPress={() => Linking.openURL("tel:+14070000000")} testID="call-driver" />
+          <ActionBtn icon="close-circle" label="Cancel" onPress={onCancel} danger testID="cancel-trip" />
+        </View>
+      ) : (
+        <Text style={styles.lockHint}>Sit back and enjoy your ride — trip options return after drop-off.</Text>
+      )}
     </View>
   );
 }

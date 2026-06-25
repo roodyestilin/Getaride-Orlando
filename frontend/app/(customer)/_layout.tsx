@@ -37,6 +37,13 @@ export default function CustomerLayout() {
         }}
       />
       <Tabs.Screen
+        name="inbox"
+        options={{
+          title: "Inbox",
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="account"
         options={{
           title: "Account",

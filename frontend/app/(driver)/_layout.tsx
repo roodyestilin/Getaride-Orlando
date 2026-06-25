@@ -31,6 +31,10 @@ export default function DriverLayout() {
         options={{ title: "Earnings", tabBarIcon: ({ color, size }) => <Ionicons name="cash" size={size} color={color} /> }}
       />
       <Tabs.Screen
+        name="inbox"
+        options={{ title: "Inbox", tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} /> }}
+      />
+      <Tabs.Screen
         name="account"
         options={{ title: "Account", tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} /> }}
       />

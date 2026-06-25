@@ -637,6 +637,154 @@ async def send_message(ride_id: str, req: MessageReq, user=Depends(get_current_u
     return {"ok": True}
 
 
+@api_router.get("/driver/earnings")
+async def driver_earnings(user=Depends(get_current_user)):
+    from datetime import datetime, timedelta
+    cursor = db.rides.find({"driver_bid.driver_id": user["id"], "status": "completed"}, {"_id": 0}).sort("created_at", -1)
+    rides = await cursor.to_list(300)
+    now = datetime.now()
+    sow = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    sow_ts = sow.timestamp()
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    days = [{"label": l[0], "full": l, "amount": 0.0} for l in labels]
+    week_total = 0.0
+    week_trips = 0
+    week_minutes = 0
+    lifetime = 0.0
+    breakdown = []
+    for r in rides:
+        fare = float(r.get("final_fare") or r.get("recommended_fare") or 0)
+        tip = float(r.get("tip") or 0)
+        earn = fare + tip
+        lifetime += earn
+        ct = float(r.get("created_at") or 0)
+        dur = int(r.get("duration_min") or 0)
+        if ct >= sow_ts:
+            idx = min(6, max(0, int((ct - sow_ts) // 86400)))
+            days[idx]["amount"] = round(days[idx]["amount"] + earn, 2)
+            week_total += earn
+            week_trips += 1
+            week_minutes += dur
+        breakdown.append({
+            "id": r["id"], "customer_name": r.get("customer_name"),
+            "pickup": r["pickup"]["label"], "destination": r["destination"]["label"],
+            "fare": round(fare, 2), "tip": round(tip, 2), "total": round(earn, 2),
+            "distance_miles": r.get("distance_miles"), "at": ct,
+        })
+    return {
+        "week_total": round(week_total, 2),
+        "week_trips": week_trips,
+        "online_hours": round(week_minutes / 60, 1),
+        "points": int(week_total * 2),
+        "lifetime": round(lifetime, 2),
+        "days": days,
+        "trips": breakdown[:40],
+    }
+
+
+# --------------------------------------------------------------------------
+# Inbox (conversations) — per-user soft delete; admin always sees everything
+# --------------------------------------------------------------------------
+@api_router.get("/inbox")
+async def inbox(user=Depends(get_current_user)):
+    if user["role"] == "driver":
+        q = {"driver_bid.driver_id": user["id"]}
+    else:
+        q = {"customer_id": user["id"]}
+    rides = await db.rides.find(q, {"_id": 0}).sort("created_at", -1).to_list(100)
+    deletes = await db.conversation_deletes.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    del_map = {d["ride_id"]: d["deleted_at"] for d in deletes}
+    convos = []
+    for r in rides:
+        last = await db.messages.find({"ride_id": r["id"]}, {"_id": 0}).sort("at", -1).to_list(1)
+        if not last:
+            continue
+        m = last[0]
+        d_at = del_map.get(r["id"])
+        if d_at and m["at"] <= d_at:
+            continue
+        other = (r.get("customer_name") or "Rider") if user["role"] == "driver" else ((r.get("assigned_driver") or {}).get("name") or "Driver")
+        convos.append({
+            "ride_id": r["id"],
+            "other_name": other,
+            "last_text": m["text"],
+            "last_at": m["at"],
+            "route": f'{r["pickup"]["label"]} → {r["destination"]["label"]}',
+            "status": r.get("status"),
+        })
+    convos.sort(key=lambda c: c["last_at"], reverse=True)
+    return {"conversations": convos}
+
+
+@api_router.delete("/inbox/{ride_id}")
+async def delete_conversation(ride_id: str, user=Depends(get_current_user)):
+    await db.conversation_deletes.update_one(
+        {"user_id": user["id"], "ride_id": ride_id},
+        {"$set": {"user_id": user["id"], "ride_id": ride_id, "deleted_at": now_ts()}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------
+# Admin dashboard
+# --------------------------------------------------------------------------
+async def require_admin(user=Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin access only")
+    return user
+
+
+@api_router.get("/admin/overview")
+async def admin_overview(admin=Depends(require_admin)):
+    drivers = await db.users.count_documents({"role": "driver"})
+    customers = await db.users.count_documents({"role": "customer"})
+    online = await db.users.count_documents({"role": "driver", "online": True})
+    completed = await db.rides.find({"status": "completed", "source": {"$ne": "sim"}}, {"_id": 0}).to_list(2000)
+    revenue = sum(float(r.get("final_fare") or 0) + float(r.get("tip") or 0) for r in completed)
+    tips = sum(float(r.get("tip") or 0) for r in completed)
+    active = await db.rides.count_documents({"source": {"$ne": "sim"}, "status": {"$in": ["accepted", "arrived", "in_progress", "driver_enroute"]}})
+    total_rides = await db.rides.count_documents({"source": {"$ne": "sim"}})
+    return {
+        "drivers": drivers, "customers": customers, "drivers_online": online,
+        "total_rides": total_rides, "active_rides": active,
+        "completed_trips": len(completed), "revenue": round(revenue, 2), "tips": round(tips, 2),
+    }
+
+
+@api_router.get("/admin/conversations")
+async def admin_conversations(admin=Depends(require_admin)):
+    ride_ids = await db.messages.distinct("ride_id")
+    out = []
+    for rid in ride_ids:
+        msgs = await db.messages.find({"ride_id": rid}, {"_id": 0}).sort("at", 1).to_list(500)
+        if not msgs:
+            continue
+        ride = await db.rides.find_one({"id": rid}, {"_id": 0})
+        out.append({
+            "ride_id": rid,
+            "customer_name": (ride or {}).get("customer_name") or "Rider",
+            "driver_name": ((ride or {}).get("assigned_driver") or {}).get("name") or "Driver",
+            "route": (f'{ride["pickup"]["label"]} → {ride["destination"]["label"]}' if ride else ""),
+            "messages": msgs,
+            "last_at": msgs[-1]["at"],
+        })
+    out.sort(key=lambda c: c["last_at"], reverse=True)
+    return {"conversations": out}
+
+
+@api_router.get("/admin/users")
+async def admin_users(admin=Depends(require_admin)):
+    users = await db.users.find({}, {"_id": 0, "password": 0}).sort("created_at", -1).to_list(500)
+    return {"users": users}
+
+
+@api_router.get("/admin/rides")
+async def admin_rides(admin=Depends(require_admin)):
+    rides = await db.rides.find({"source": {"$ne": "sim"}}, {"_id": 0}).sort("created_at", -1).to_list(300)
+    return {"rides": rides}
+
+
 @api_router.get("/")
 async def root():
     return {"message": "Getaride Orlando API"}
@@ -658,6 +806,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def seed_admin():
+    existing = await db.users.find_one({"email": "admin@getaride.com"})
+    if not existing:
+        hashed = bcrypt.hashpw("Admin1234".encode(), bcrypt.gensalt()).decode()
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()), "email": "admin@getaride.com", "password": hashed,
+            "name": "Getaride Admin", "role": "admin", "phone": None, "photo": None,
+            "rating": 5.0, "vehicle": None, "plate": None, "online": False, "created_at": now_ts(),
+        })
 
 
 @app.on_event("shutdown")
