@@ -308,11 +308,15 @@ function TrackingSheet({ ride, track, status, onCancel, insets, rideId, tip, onT
       </View>
 
       <View style={styles.actionRow}>
-        <ActionBtn icon="chatbubble-ellipses" label="Chat" disabled={locked} onPress={() => router.push(`/chat/${rideId}`)} testID="open-chat" />
-        <ActionBtn icon="call" label="Call" disabled={locked} onPress={() => Linking.openURL("tel:+14070000000")} testID="call-driver" />
+        {!locked ? (
+          <>
+            <ActionBtn icon="chatbubble-ellipses" label="Chat" onPress={() => router.push(`/chat/${rideId}`)} testID="open-chat" />
+            <ActionBtn icon="call" label="Call" onPress={() => Linking.openURL("tel:+14070000000")} testID="call-driver" />
+          </>
+        ) : null}
         <ActionBtn icon="close-circle" label="Cancel" disabled={locked} onPress={onCancel} danger testID="cancel-trip" />
       </View>
-      {locked ? <Text style={styles.lockHint}>Chat, call and cancel are paused while your trip is in progress.</Text> : null}
+      {locked ? <Text style={styles.lockHint}>Chat and call are unavailable while your trip is in progress.</Text> : null}
 
       {status === "in_progress" ? <TipSection tip={tip} onTip={onTip} /> : null}
     </View>
