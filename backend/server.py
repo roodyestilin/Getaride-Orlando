@@ -592,14 +592,15 @@ async def driver_active(user=Depends(get_current_user)):
         "driver_bid.driver_id": user["id"],
         "status": {"$nin": ["completed", "cancelled", "declined"]},
     })
+    approval = user.get("approval_status", "approved")
     if not ride:
-        return {"ride": None, "online": user.get("online", False)}
+        return {"ride": None, "online": user.get("online", False), "approval_status": approval}
     # auto-accept once accept_at passes
     if ride["status"] == "searching" and ride.get("accept_at") and now_ts() >= ride["accept_at"]:
         await db.rides.update_one({"id": ride["id"]}, {"$set": {"status": "accepted", "accepted_at": now_ts()}})
         ride["status"] = "accepted"
     ride.pop("_id", None)
-    return {"ride": ride, "online": user.get("online", False)}
+    return {"ride": ride, "online": user.get("online", False), "approval_status": approval}
 
 
 @api_router.post("/rides/{ride_id}/driver-status")

@@ -82,6 +82,7 @@ function RequestPopup({ req, secsLeft, bottom, onSkip, onBid }: any) {
 export default function DriverHome() {
   const insets = useSafeAreaInsets();
   const [online, setOnline] = useState(false);
+  const [approval, setApproval] = useState<string>("approved");
   const [requests, setRequests] = useState<any[]>([]);
   const [active, setActive] = useState<any>(null);
   const [selected, setSelected] = useState<any>(null);
@@ -179,6 +180,7 @@ export default function DriverHome() {
     try {
       const a: any = await api("/driver/active");
       setActive(a.ride);
+      if (a.approval_status) setApproval(a.approval_status);
       const isOnline = !!a.online;
       setOnline(isOnline);
       if (isOnline && !a.ride) {
@@ -201,6 +203,12 @@ export default function DriverHome() {
   );
 
   const toggleOnline = async () => {
+    if (approval !== "approved") {
+      setNotice(approval === "declined"
+        ? "Your driver application was declined. Please contact support."
+        : "Your account is pending approval. You can go online once Getaride approves you.");
+      return;
+    }
     const next = !online;
     if (!next && active) {
       setNotice("Finish your active trip before going offline.");
@@ -251,9 +259,23 @@ export default function DriverHome() {
     <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
       <View style={styles.header}>
         <Logo size={32} showWord showMark={false} />
-        <Pressable testID="online-toggle" onPress={toggleOnline} style={[styles.onlinePill, online && styles.onlinePillActive]}>
-          <View style={[styles.statusDot, { backgroundColor: online ? colors.success : colors.muted }]} />
-          <Text style={[styles.onlineText, online && { color: colors.success }]}>{online ? "Online" : "Offline"}</Text>
+        <Pressable testID="online-toggle" onPress={toggleOnline} style={[styles.onlinePill, online && styles.onlinePillActive, approval !== "approved" && styles.onlinePillPending]}>
+          {approval === "pending" ? (
+            <>
+              <Ionicons name="time-outline" size={14} color={colors.warning} />
+              <Text style={[styles.onlineText, { color: colors.warning }]}>Pending</Text>
+            </>
+          ) : approval === "declined" ? (
+            <>
+              <Ionicons name="close-circle-outline" size={14} color={colors.error} />
+              <Text style={[styles.onlineText, { color: colors.error }]}>Declined</Text>
+            </>
+          ) : (
+            <>
+              <View style={[styles.statusDot, { backgroundColor: online ? colors.success : colors.muted }]} />
+              <Text style={[styles.onlineText, online && { color: colors.success }]}>{online ? "Online" : "Offline"}</Text>
+            </>
+          )}
         </Pressable>
       </View>
 
@@ -264,7 +286,39 @@ export default function DriverHome() {
         </View>
       ) : null}
 
-      {active ? (
+      {approval !== "approved" ? (
+        <View style={styles.pendingWrap}>
+          <View style={styles.pendingCard} testID="approval-banner">
+            <View style={[styles.pendingIcon, approval === "declined" && { backgroundColor: "#fee2e2" }]}>
+              <Ionicons
+                name={approval === "declined" ? "close-circle" : "hourglass-outline"}
+                size={36}
+                color={approval === "declined" ? colors.error : colors.warning}
+              />
+            </View>
+            <Text style={styles.pendingTitle}>
+              {approval === "declined" ? "Application declined" : "Application under review"}
+            </Text>
+            <Text style={styles.pendingSub}>
+              {approval === "declined"
+                ? "Unfortunately your driver application wasn't approved. Reach out to Getaride support for more details."
+                : "Thanks for signing up! Our team is reviewing your details. You'll be able to go online and accept rides as soon as you're approved."}
+            </Text>
+            <View style={styles.pendingSteps}>
+              {["Account created", "Documents submitted", approval === "declined" ? "Declined" : "Awaiting approval"].map((s, i) => (
+                <View key={s} style={styles.pendingStepRow}>
+                  <Ionicons
+                    name={i < 2 ? "checkmark-circle" : approval === "declined" ? "close-circle" : "ellipse-outline"}
+                    size={18}
+                    color={i < 2 ? colors.success : approval === "declined" ? colors.error : colors.muted}
+                  />
+                  <Text style={styles.pendingStepText}>{s}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      ) : active ? (
         <Pressable testID="active-banner" style={styles.activeBanner} onPress={() => { unlockSpeech(); router.push(`/driver-trip/${active.id}`); }}>
           <View style={styles.activeIcon}>
             <Ionicons name="car-sport" size={22} color="#fff" />
@@ -359,6 +413,15 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginBottom: spacing.lg },
   onlinePill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, height: 36, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
   onlinePillActive: { backgroundColor: "#dcfce7" },
+  onlinePillPending: { backgroundColor: colors.surfaceSecondary },
+  pendingWrap: { flex: 1, justifyContent: "center", paddingHorizontal: spacing.xl },
+  pendingCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing["2xl"], alignItems: "center", gap: spacing.md, ...shadow },
+  pendingIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#fef3c7", alignItems: "center", justifyContent: "center" },
+  pendingTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface, textAlign: "center" },
+  pendingSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center", lineHeight: 20 },
+  pendingSteps: { alignSelf: "stretch", gap: spacing.sm, marginTop: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.lg },
+  pendingStepRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  pendingStepText: { fontFamily: font.medium, fontSize: 14, color: colors.onSurface },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   onlineText: { fontFamily: font.semibold, fontSize: 13, color: colors.muted },
   notice: { flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: spacing.xl, marginBottom: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },

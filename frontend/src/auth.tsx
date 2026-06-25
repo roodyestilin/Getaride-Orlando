@@ -13,6 +13,7 @@ export type User = {
   rating?: number;
   vehicle?: string | null;
   plate?: string | null;
+  approval_status?: "pending" | "approved" | "declined" | "deactivated";
 };
 
 type AuthState = {

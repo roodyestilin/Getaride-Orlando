@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 6 verified the new multi-step driver signup + admin approval gate end-to-end. Backend pytest (test_driver_approval_flow.py): 16/16 PASSED in 4.47s — covering (a) POST /api/auth/register with full multi-step driver payload returns approval_status='pending' (vehicle_make/model/year/color, plate, license_number, insurance_provider, phone all persisted; combined 'vehicle' string assembled for back-compat), (b) /auth/me echoes pending, (c) POST /api/driver/online status=online -> 403 for pending driver with message containing 'approved/pending/review', (d) GET /api/driver/active returns approval_status field + online=false, (e) admin POST /api/admin/drivers/{id}/status approve unlocks /driver/online success, (f) deactivate -> 403 + forces online=false, (g) declined -> 403 then reactivate -> 200, (h) invalid status -> 400, (i) non-admin -> 403, (j) all admin dashboard endpoints (/admin/overview /users /rides /conversations /live) return 200 with expected keys (drivers, customers, drivers_online, total_rides, active_rides, completed_trips, revenue, tips); /admin/users strips password field; non-admin (seeded driver) gets 403 on every admin route, (k) /api/driver/earnings returns 200 with week_total/today_total/month_total/online_hours/points/lifetime + 7-day days[] array + trips breakdown. Frontend Playwright (mobile 390x844 + desktop 1280x800 for /admin): PHASE 1 — registered pendingdriver+q0cnxq@getaride.com through 3 steps in /auth, verified testID 'signup-stepper' is visible, step indicator advances, validation errors appear on each empty submit ('Please fill in your account details.', 'Please complete your vehicle details.', \"Please enter your driver's license number.\"), Back button returns to previous step with data preserved, final Submit Application registered the driver and landed on driver home. testID 'approval-banner' visible with title 'Application under review', 'Account created'+'Documents submitted'+'Awaiting approval' steps; testID 'online-toggle' pill renders the yellow 'Pending' label (hourglass icon). Tapping the pending pill did NOT call /driver/online — it surfaced the 'driver-notice' toast 'Your account is pending approval. You can go online once Getaride approves you.' and the pill stayed 'Pending'. PHASE 2 — logged in as admin@getaride.com/Admin1234 on /admin (desktop), switched to admin-tab-users, the new driver's row was visible with the 'Approve' action (testID approve-<uuid>); clicking it returned 200. PHASE 3 — logged back in as the new driver: approval-banner is gone, online-toggle now shows 'Offline'; tapping it transitioned to 'Online' (the home screen rendered the live map with 'You're online · 5 nearby' and a New ride request card from Carlos M., confirming /driver/requests returned data). Console: only the pre-existing 3rd-party ipapi.co CORS warning + Expo 'shadow*' / 'pointerEvents' deprecation WARNS (RN web noise, not bugs); zero red screens or JS errors related to this feature.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warns: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — observed across multiple screens (likely /src/theme shadow style helper). Reference: shared style helper used in driver/admin screens.", "priority": "LOW"},
+      {"component": "props.pointerEvents", "issue": "Console warns: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Reference: likely react-native-maps overlay on /(driver)/index.tsx and /ride/[id].tsx.", "priority": "LOW"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_driver_approval_flow.py (NEW — 16 cases, all green)",
+    "/app/test_reports/pytest/iter6_driver_approval.xml",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "action_items": [
+    "(Optional/low priority) Replace shadow* style props with boxShadow in the shared shadow helper to silence RN-web deprecation warnings.",
+    "(Optional/low priority) Move pointerEvents from props to style on map overlays to silence deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py /api/driver/online (line 530-546): when a driver tries to go online while NOT approved we 403, good. But /api/admin/drivers/{id}/status (line 848-859) only sets online=false for declined/deactivated/pending — it does NOT cancel any active sim trip the driver may have started before being deactivated (because the deactivate happens after they were online). Edge case: an approved driver picks up a sim trip, then admin deactivates -> the trip stays in 'accepted/arrived/in_progress' but driver_active will still return it. Consider also marking that ride as 'cancelled' on deactivate, or at least documenting the contract.",
+    "auth.tsx (line 91): validation checks `if (!vehicleMake || !vehicleModel || !vehicleYear || !plate)` — vehicle_color and phone are optional, which is fine, but the year field accepts arbitrary numeric text (e.g. '99' or '2050'); consider tightening to 4 digits within a sane range on the client to fail-fast before the server accepts a malformed record (server stores as string).",
+    "(driver)/index.tsx (line 262): the online-toggle Pressable is the SAME element for Pending/Declined/Offline/Online states and it always fires toggleOnline; when approval !== 'approved' the handler short-circuits with a notice — UX-wise this works but for a11y a disabled state with `accessibilityState={{ disabled: true }}` would be better for screen readers.",
+    "server.py public_user (line 109-128): now returns many driver-only fields (vehicle_make/model/year/license_number/insurance_provider) even for customer accounts — they'll just be None, but this leaks the schema. Cosmetic; consider gating those keys on role=='driver'.",
+    "Existing comment from iter5 still applies: server.py /api/admin/conversations returns full messages[] for every ride — fine today, but plan for pagination at 1k+ convos."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_driver_approval_flow.py (new)",
+    "/app/test_reports/iteration_6.json (new)",
+    "/app/test_reports/pytest/iter6_driver_approval.xml (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (3/3 phases: signup steps + admin approval + post-approval go-online)"},
+  "seed_data_creation": "Created one fresh driver: pendingdriver+q0cnxq@getaride.com / Drive1234 (Honda Civic 2022 Silver, plate FLQ0CN, license DLQ0CNXQ, insurance GEICO). Currently approval_status='approved' (was approved during PHASE 2 of the test). Safe to leave or delete. The pytest module additionally registers 1 short-lived TEST_pendingdriver+<rand>@getaride.com per run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Frontend stores the auth JWT as JSON.stringify(token) under localStorage key 'token'; the /admin page uses a separate 'admin_token' key but the shared `api()` helper reads 'token' — admin login overwrites the global token, so test admin in its own browser context if you need rider/driver flows in the same run. The new pytest module is `test_driver_approval_flow.py` and can be re-run with `pytest /app/backend/tests/test_driver_approval_flow.py -v` (uses EXPO_PUBLIC_BACKEND_URL). The seed driver driver@getaride.com is legacy-approved (approval_status defaults to 'approved' on existing records without the field) — to retest the pending->approve path always register a fresh driver, never reuse the seed.",
+  "rca_of_issue": "N/A — all review items pass."
+}
