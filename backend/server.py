@@ -118,6 +118,13 @@ def public_user(u: dict) -> dict:
         "vehicle": u.get("vehicle"),
         "plate": u.get("plate"),
         "online": u.get("online", False),
+        "approval_status": u.get("approval_status", "approved"),
+        "color": u.get("color"),
+        "vehicle_make": u.get("vehicle_make"),
+        "vehicle_model": u.get("vehicle_model"),
+        "vehicle_year": u.get("vehicle_year"),
+        "license_number": u.get("license_number"),
+        "insurance_provider": u.get("insurance_provider"),
     }
 
 
@@ -151,6 +158,12 @@ class RegisterReq(BaseModel):
     phone: Optional[str] = None
     vehicle: Optional[str] = None
     plate: Optional[str] = None
+    vehicle_make: Optional[str] = None
+    vehicle_model: Optional[str] = None
+    vehicle_year: Optional[str] = None
+    vehicle_color: Optional[str] = None
+    license_number: Optional[str] = None
+    insurance_provider: Optional[str] = None
 
 
 class LoginReq(BaseModel):
@@ -251,6 +264,10 @@ async def register(req: RegisterReq):
     if existing:
         raise HTTPException(409, "An account with this email already exists")
     hashed = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
+    is_driver = req.role == "driver"
+    vehicle = req.vehicle
+    if is_driver and not vehicle and (req.vehicle_make or req.vehicle_model):
+        vehicle = " ".join([p for p in [req.vehicle_year, req.vehicle_make, req.vehicle_model] if p]).strip()
     user = {
         "id": str(uuid.uuid4()),
         "email": req.email.lower(),
@@ -260,8 +277,15 @@ async def register(req: RegisterReq):
         "phone": req.phone,
         "photo": None,
         "rating": 5.0,
-        "vehicle": req.vehicle if req.role == "driver" else None,
-        "plate": req.plate if req.role == "driver" else None,
+        "vehicle": vehicle if is_driver else None,
+        "plate": req.plate if is_driver else None,
+        "color": req.vehicle_color if is_driver else None,
+        "vehicle_make": req.vehicle_make if is_driver else None,
+        "vehicle_model": req.vehicle_model if is_driver else None,
+        "vehicle_year": req.vehicle_year if is_driver else None,
+        "license_number": req.license_number if is_driver else None,
+        "insurance_provider": req.insurance_provider if is_driver else None,
+        "approval_status": "pending" if is_driver else "approved",
         "online": False,
         "created_at": now_ts(),
     }
@@ -506,6 +530,8 @@ async def ensure_driver_requests():
 @api_router.post("/driver/online")
 async def driver_online(req: StatusReq, user=Depends(get_current_user)):
     online = req.status == "online"
+    if online and user.get("approval_status", "approved") != "approved":
+        raise HTTPException(403, "Your driver account is not approved yet. Please wait for Getaride to review your application.")
     if not online:
         # Block going offline while an accepted offer / active trip is underway.
         active = await db.rides.find_one({
@@ -645,11 +671,17 @@ async def driver_earnings(user=Depends(get_current_user)):
     now = datetime.now()
     sow = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     sow_ts = sow.timestamp()
+    today_ts = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    month_ts = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
     labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     days = [{"label": l[0], "full": l, "amount": 0.0} for l in labels]
     week_total = 0.0
     week_trips = 0
     week_minutes = 0
+    today_total = 0.0
+    today_trips = 0
+    month_total = 0.0
+    month_trips = 0
     lifetime = 0.0
     breakdown = []
     for r in rides:
@@ -665,6 +697,12 @@ async def driver_earnings(user=Depends(get_current_user)):
             week_total += earn
             week_trips += 1
             week_minutes += dur
+        if ct >= today_ts:
+            today_total += earn
+            today_trips += 1
+        if ct >= month_ts:
+            month_total += earn
+            month_trips += 1
         breakdown.append({
             "id": r["id"], "customer_name": r.get("customer_name"),
             "pickup": r["pickup"]["label"], "destination": r["destination"]["label"],
@@ -674,6 +712,10 @@ async def driver_earnings(user=Depends(get_current_user)):
     return {
         "week_total": round(week_total, 2),
         "week_trips": week_trips,
+        "today_total": round(today_total, 2),
+        "today_trips": today_trips,
+        "month_total": round(month_total, 2),
+        "month_trips": month_trips,
         "online_hours": round(week_minutes / 60, 1),
         "points": int(week_total * 2),
         "lifetime": round(lifetime, 2),
@@ -783,6 +825,88 @@ async def admin_users(admin=Depends(require_admin)):
 async def admin_rides(admin=Depends(require_admin)):
     rides = await db.rides.find({"source": {"$ne": "sim"}}, {"_id": 0}).sort("created_at", -1).to_list(300)
     return {"rides": rides}
+
+
+class AdminStatusReq(BaseModel):
+    status: str  # approved | declined | deactivated | pending
+
+
+class ProfileUpdateReq(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    vehicle: Optional[str] = None
+    plate: Optional[str] = None
+    color: Optional[str] = None
+    rating: Optional[float] = None
+
+
+class SupportMsgReq(BaseModel):
+    text: str
+
+
+@api_router.post("/admin/drivers/{driver_id}/status")
+async def admin_set_driver_status(driver_id: str, req: AdminStatusReq, admin=Depends(require_admin)):
+    if req.status not in ("approved", "declined", "deactivated", "pending"):
+        raise HTTPException(400, "Invalid status")
+    d = await db.users.find_one({"id": driver_id, "role": "driver"})
+    if not d:
+        raise HTTPException(404, "Driver not found")
+    upd = {"approval_status": req.status}
+    if req.status in ("declined", "deactivated", "pending"):
+        upd["online"] = False
+    await db.users.update_one({"id": driver_id}, {"$set": upd})
+    return {"ok": True, "approval_status": req.status}
+
+
+@api_router.patch("/admin/users/{user_id}")
+async def admin_update_user(user_id: str, req: ProfileUpdateReq, admin=Depends(require_admin)):
+    u = await db.users.find_one({"id": user_id})
+    if not u:
+        raise HTTPException(404, "User not found")
+    upd = {k: v for k, v in req.dict().items() if v is not None}
+    if upd:
+        await db.users.update_one({"id": user_id}, {"$set": upd})
+    u = await db.users.find_one({"id": user_id})
+    return {"ok": True, "user": public_user(u)}
+
+
+@api_router.get("/admin/rides/{ride_id}")
+async def admin_ride_detail(ride_id: str, admin=Depends(require_admin)):
+    r = await db.rides.find_one({"id": ride_id}, {"_id": 0})
+    if not r:
+        raise HTTPException(404, "Ride not found")
+    msg_count = await db.messages.count_documents({"ride_id": ride_id})
+    return {"ride": r, "message_count": msg_count}
+
+
+@api_router.get("/admin/live")
+async def admin_live(admin=Depends(require_admin)):
+    rides = await db.rides.find(
+        {"source": {"$ne": "sim"}, "status": {"$in": ["driver_enroute", "arrived", "in_progress", "accepted"]}},
+        {"_id": 0},
+    ).sort("accepted_at", -1).to_list(100)
+    out = []
+    for r in rides:
+        out.append({
+            "id": r["id"], "status": r.get("status"),
+            "customer_name": r.get("customer_name"),
+            "driver_name": (r.get("assigned_driver") or {}).get("name"),
+            "pickup": r["pickup"], "destination": r["destination"],
+            "fare": r.get("final_fare") or r.get("recommended_fare"),
+        })
+    return {"live": out}
+
+
+@api_router.post("/admin/conversations/{ride_id}/message")
+async def admin_support_message(ride_id: str, req: SupportMsgReq, admin=Depends(require_admin)):
+    msg = {
+        "id": str(uuid.uuid4()), "ride_id": ride_id,
+        "sender_id": "support", "sender_role": "support", "sender_name": "Getaride Support",
+        "text": req.text, "at": now_ts(),
+    }
+    await db.messages.insert_one(dict(msg))
+    msg.pop("_id", None)
+    return {"message": msg}
 
 
 @api_router.get("/")

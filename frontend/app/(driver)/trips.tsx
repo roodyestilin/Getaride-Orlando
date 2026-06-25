@@ -1,14 +1,17 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { api } from "@/src/api";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
 
+type Period = "today" | "week" | "month";
+
 export default function DriverEarnings() {
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<any>(null);
+  const [period, setPeriod] = useState<Period>("week");
 
   const load = useCallback(async () => {
     try {
@@ -23,17 +26,25 @@ export default function DriverEarnings() {
   const maxDay = Math.max(1, ...days.map((d) => d.amount));
   const trips: any[] = data?.trips || [];
 
+  const total = period === "today" ? data?.today_total : period === "month" ? data?.month_total : data?.week_total;
+  const tripCount = period === "today" ? data?.today_trips : period === "month" ? data?.month_trips : data?.week_trips;
+  const periodLabel = period === "today" ? "Today" : period === "month" ? "This month" : "This week";
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + 80 }}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + 80 }}>
       <Text style={styles.title}>Earnings</Text>
 
-      <View style={styles.weekCard}>
-        <Text style={styles.weekLabel}>This week</Text>
-        <Text style={styles.weekValue}>${(data?.week_total ?? 0).toFixed(2)}</Text>
+      <View style={styles.segment}>
+        {(["today", "week", "month"] as const).map((p) => (
+          <Pressable key={p} onPress={() => setPeriod(p)} style={[styles.segBtn, period === p && styles.segBtnActive]} testID={`period-${p}`}>
+            <Text style={[styles.segText, period === p && styles.segTextActive]}>{p === "today" ? "Day" : p[0].toUpperCase() + p.slice(1)}</Text>
+          </Pressable>
+        ))}
+      </View>
 
+      <View style={styles.weekCard}>
+        <Text style={styles.weekLabel}>{periodLabel} · {tripCount ?? 0} trips</Text>
+        <Text style={styles.weekValue}>${(total ?? 0).toFixed(2)}</Text>
         <View style={styles.chartRow}>
           {days.map((d, i) => (
             <View key={i} style={styles.chartCol}>
@@ -44,19 +55,18 @@ export default function DriverEarnings() {
             </View>
           ))}
         </View>
+        <Text style={styles.chartHint}>This week&apos;s daily earnings</Text>
       </View>
 
       <View style={styles.statRow}>
-        <Stat icon="time-outline" value={`${(data?.online_hours ?? 0)}h`} label="Online" />
-        <Stat icon="car-sport-outline" value={`${data?.week_trips ?? 0}`} label="Trips" />
+        <Stat icon="time-outline" value={`${data?.online_hours ?? 0}h`} label="Online" />
+        <Stat icon="car-sport-outline" value={`${data?.week_trips ?? 0}`} label="Wk trips" />
         <Stat icon="sparkles-outline" value={`${data?.points ?? 0}`} label="Points" />
       </View>
 
       <View style={styles.walletCard}>
         <View style={styles.walletTop}>
-          <View style={styles.walletIcon}>
-            <Ionicons name="wallet" size={20} color="#fff" />
-          </View>
+          <View style={styles.walletIcon}><Ionicons name="wallet" size={20} color="#fff" /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.walletLabel}>Wallet balance</Text>
             <Text style={styles.walletValue}>${(data?.lifetime ?? 0).toFixed(2)}</Text>
@@ -110,6 +120,11 @@ function Stat({ icon, value, label }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   title: { fontFamily: font.bold, fontSize: 26, color: colors.onSurface, paddingHorizontal: spacing.xl, marginBottom: spacing.md },
+  segment: { flexDirection: "row", marginHorizontal: spacing.xl, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: 4, marginBottom: spacing.md },
+  segBtn: { flex: 1, paddingVertical: spacing.sm, alignItems: "center", borderRadius: radius.sm },
+  segBtnActive: { backgroundColor: colors.surface, ...shadowSoft },
+  segText: { fontFamily: font.medium, fontSize: 14, color: colors.muted },
+  segTextActive: { color: colors.brandPrimary, fontFamily: font.semibold },
   weekCard: { marginHorizontal: spacing.xl, backgroundColor: colors.brandPrimary, borderRadius: radius.lg, padding: spacing.xl, ...shadow },
   weekLabel: { fontFamily: font.medium, fontSize: 13, color: "rgba(255,255,255,0.85)" },
   weekValue: { fontFamily: font.monoBold, fontSize: 38, color: "#fff", marginTop: 2 },
@@ -118,6 +133,7 @@ const styles = StyleSheet.create({
   barTrack: { width: 14, height: 70, borderRadius: 7, backgroundColor: "rgba(255,255,255,0.22)", justifyContent: "flex-end", overflow: "hidden" },
   barFill: { width: "100%", borderRadius: 7, backgroundColor: "#fff", minHeight: 4 },
   barLabel: { fontFamily: font.medium, fontSize: 11, color: "rgba(255,255,255,0.85)" },
+  chartHint: { fontFamily: font.regular, fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: spacing.sm, textAlign: "center" },
   statRow: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.xl, marginTop: spacing.lg },
   stat: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: spacing.lg, alignItems: "center", gap: 4, ...shadowSoft },
   statValue: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface },
