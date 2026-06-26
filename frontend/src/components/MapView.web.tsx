@@ -150,6 +150,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
   const routeRef = useRef<number[][] | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const pickupM = useRef<mapboxgl.Marker | null>(null);
+  const pickupKind = useRef<"pulse" | "plain" | null>(null);
   const destM = useRef<mapboxgl.Marker | null>(null);
   const driverM = useRef<mapboxgl.Marker | null>(null);
   const stopMs = useRef<mapboxgl.Marker[]>([]);
@@ -224,7 +225,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat(coords[0] as any).addTo(map);
     if (followRef.current) {
       followingRef.current = true;
-      map.easeTo({ center: coords[0] as any, zoom: 16.6, bearing: 0, pitch: 55, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 700 });
+      map.easeTo({ center: coords[0] as any, zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 700 });
     }
     const first = (steps[1] || steps[0])?.maneuver?.instruction;
     if (first) navStateRef.current = { instruction: first, distanceText: fmtDist(stepEnd[0] || 0), announce: first, announceId: ++announceIdRef.current };
@@ -340,10 +341,13 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
       stopMs.current = [];
       if (pulsePickup) {
         if (destM.current) { destM.current.remove(); destM.current = null; }
-        if (!pickupM.current) pickupM.current = new mapboxgl.Marker({ element: makeCustomerEl() }).setLngLat([navTo!.lng, navTo!.lat]).addTo(map);
-        else pickupM.current.setLngLat([navTo!.lng, navTo!.lat]);
+        if (pickupM.current && pickupKind.current !== "pulse") { pickupM.current.remove(); pickupM.current = null; }
+        if (!pickupM.current) {
+          pickupM.current = new mapboxgl.Marker({ element: makeCustomerEl() }).setLngLat([navTo!.lng, navTo!.lat]).addTo(map);
+          pickupKind.current = "pulse";
+        } else pickupM.current.setLngLat([navTo!.lng, navTo!.lat]);
       } else {
-        if (pickupM.current) { pickupM.current.remove(); pickupM.current = null; }
+        if (pickupM.current) { pickupM.current.remove(); pickupM.current = null; pickupKind.current = null; }
         if (!destM.current) destM.current = new mapboxgl.Marker({ color: colors.success }).setLngLat([navTo!.lng, navTo!.lat]).addTo(map);
         else destM.current.setLngLat([navTo!.lng, navTo!.lat]);
       }
@@ -353,10 +357,13 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     }
 
     if (pickup) {
+      const wantKind: "pulse" | "plain" = pulsePickup ? "pulse" : "plain";
+      if (pickupM.current && pickupKind.current !== wantKind) { pickupM.current.remove(); pickupM.current = null; }
       if (!pickupM.current) {
         pickupM.current = pulsePickup
           ? new mapboxgl.Marker({ element: makeCustomerEl() }).setLngLat([pickup.lng, pickup.lat]).addTo(map)
           : new mapboxgl.Marker({ color: colors.success, draggable: !!onPickupChange }).setLngLat([pickup.lng, pickup.lat]).addTo(map);
+        pickupKind.current = wantKind;
         if (onPickupChange && !pulsePickup) {
           pickupM.current.on("dragend", () => {
             const ll = pickupM.current!.getLngLat();
@@ -367,6 +374,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     } else if (pickupM.current) {
       pickupM.current.remove();
       pickupM.current = null;
+      pickupKind.current = null;
     }
 
     if (destination) {
@@ -490,7 +498,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     followingRef.current = true;
     if (navMode && followRef.current) {
       const c = driverM.current?.getLngLat();
-      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 16.6, bearing: 0, pitch: 55, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 500 });
+      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 500 });
     } else {
       map.easeTo({ bearing: 0, pitch: 0, duration: 300 });
       fitBounds();
