@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, Platform, Animated, PanResponder } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
@@ -50,6 +50,55 @@ export default function DriverTrip() {
   voiceOnRef.current = voiceOn;
   const voiceRef = useRef<string | undefined>(undefined);
   const lastAnnounceIdRef = useRef<number>(-1);
+
+  // ---- Draggable bottom sheet (swipe up to expand, down to collapse) ----
+  const sheetTY = useRef(new Animated.Value(0)).current;
+  const sheetMeta = useRef({ full: 0, header: 0, collapsedY: 0, rest: 0 });
+  const expandedRef = useRef(false);
+  const sheetInit = useRef(false);
+
+  const settleSheet = useCallback(() => {
+    const { full, header } = sheetMeta.current;
+    if (!full || !header) return;
+    const collapsedY = Math.max(0, Math.round(full - header));
+    sheetMeta.current.collapsedY = collapsedY;
+    const target = expandedRef.current ? 0 : collapsedY;
+    sheetMeta.current.rest = target;
+    if (!sheetInit.current) sheetInit.current = true;
+    sheetTY.setValue(target);
+  }, [sheetTY]);
+
+  const animateSheet = useCallback((toExpanded: boolean) => {
+    expandedRef.current = toExpanded;
+    const target = toExpanded ? 0 : sheetMeta.current.collapsedY;
+    sheetMeta.current.rest = target;
+    Haptics.selectionAsync().catch(() => {});
+    Animated.spring(sheetTY, { toValue: target, useNativeDriver: false, speed: 16, bounciness: 3 }).start();
+  }, [sheetTY]);
+
+  const sheetPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
+      onPanResponderMove: (_, g) => {
+        const { rest, collapsedY } = sheetMeta.current;
+        const next = Math.min(Math.max(rest + g.dy, 0), collapsedY);
+        sheetTY.setValue(next);
+      },
+      onPanResponderRelease: (_, g) => {
+        const { rest, collapsedY } = sheetMeta.current;
+        if (Math.abs(g.dy) < 6 && Math.abs(g.vy) < 0.2) {
+          animateSheet(!expandedRef.current); // tap toggles
+          return;
+        }
+        let expand: boolean;
+        if (g.vy < -0.4 || g.dy < -50) expand = true;
+        else if (g.vy > 0.4 || g.dy > 50) expand = false;
+        else expand = rest < collapsedY / 2;
+        animateSheet(expand);
+      },
+    })
+  ).current;
+
 
   useEffect(() => {
     (async () => {
@@ -177,7 +226,6 @@ export default function DriverTrip() {
   const navTo = ride.status === "in_progress" ? ride.destination : ride.pickup;
   const remMi = (navStep?.remainingM ?? Infinity) / 1609.34;
   const remFt = (navStep?.remainingM ?? Infinity) * 3.28084;
-  const within2mi = remMi <= 2;
   const within300ft = remFt <= 300;
   // Disable "I've Arrived" until the driver is ~300 ft from pickup.
   const arriveLocked = ride.status === "accepted" && !within300ft;
@@ -191,7 +239,7 @@ export default function DriverTrip() {
         <MapView
           navFrom={navFrom}
           navTo={navTo}
-          pulsePickup={ride.status === "accepted" && within2mi}
+          pulsePickup={ride.status === "accepted"}
           follow={navActive}
           recenterKey={recenterKey}
           onRouteInfo={setNavInfo}
@@ -234,73 +282,84 @@ export default function DriverTrip() {
         <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
       </Pressable>
 
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
-        <View style={styles.handle} />
-
-        {waiting ? (
-          <View style={styles.waiting}>
-            <ActivityIndicator color={colors.brandPrimary} />
-            <Text style={styles.waitTitle}>Bid submitted</Text>
-            <Text style={styles.waitSub}>Waiting for {ride.customer_name} to accept your ${ (ride.final_fare ?? 0).toFixed(2)} fare…</Text>
+      <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetTY }] }]}>
+        <View onLayout={(e) => { sheetMeta.current.full = e.nativeEvent.layout.height; settleSheet(); }}>
+          <View
+            {...sheetPan.panHandlers}
+            onLayout={(e) => { sheetMeta.current.header = e.nativeEvent.layout.height; settleSheet(); }}
+            style={styles.sheetHeader}
+          >
+            <View style={styles.handle} />
+            {waiting ? (
+              <View style={styles.waiting}>
+                <ActivityIndicator color={colors.brandPrimary} />
+                <Text style={styles.waitTitle}>Bid submitted</Text>
+                <Text style={styles.waitSub}>Waiting for {ride.customer_name} to accept your ${ (ride.final_fare ?? 0).toFixed(2)} fare…</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.statusBanner}>
+                  <Text style={styles.statusText}>{STATUS_TEXT[ride.status] || ride.status}</Text>
+                  <Text style={styles.fare}>${(ride.final_fare ?? ride.recommended_fare).toFixed(2)}</Text>
+                </View>
+                {step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls || arriveLocked} testID="advance-status" />}
+                {arriveLocked ? (
+                  <Text style={styles.lockHint}>You can mark arrival within 300 ft of the pickup{remFt === Infinity ? "" : ` · ${remFt < 5280 ? Math.round(remFt) + " ft" : remMi.toFixed(1) + " mi"} away`}</Text>
+                ) : lockControls ? (
+                  <Text style={styles.lockHint}>Trip controls unlock within 1 mile of drop-off · {remMi === Infinity ? "" : remMi.toFixed(1) + " mi left"}</Text>
+                ) : null}
+              </>
+            )}
           </View>
-        ) : (
-          <>
-            <View style={styles.statusBanner}>
-              <Text style={styles.statusText}>{STATUS_TEXT[ride.status] || ride.status}</Text>
-              <Text style={styles.fare}>${(ride.final_fare ?? ride.recommended_fare).toFixed(2)}</Text>
-            </View>
 
-            <View style={styles.riderRow}>
-              <Avatar size={52} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.riderName}>{ride.customer_name}</Text>
-                <View style={styles.metaRow}>
-                  <Ionicons name="star" size={12} color={colors.warning} />
-                  <Text style={styles.metaText}>{ride.customer_rating}</Text>
-                  <Text style={styles.metaDot}>·</Text>
-                  <Text style={styles.metaText}>{ride.distance_miles} mi</Text>
-                  <Text style={styles.metaDot}>·</Text>
-                  <Text style={styles.metaText}>{ride.duration_min} min trip</Text>
+          {!waiting ? (
+            <View style={[styles.sheetDetails, { paddingBottom: insets.bottom + spacing.md }]}>
+              <View style={styles.riderRow}>
+                <Avatar size={52} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.riderName}>{ride.customer_name}</Text>
+                  <View style={styles.metaRow}>
+                    <Ionicons name="star" size={12} color={colors.warning} />
+                    <Text style={styles.metaText}>{ride.customer_rating}</Text>
+                    <Text style={styles.metaDot}>·</Text>
+                    <Text style={styles.metaText}>{ride.distance_miles} mi</Text>
+                    <Text style={styles.metaDot}>·</Text>
+                    <Text style={styles.metaText}>{ride.duration_min} min trip</Text>
+                  </View>
+                </View>
+                <View style={styles.iconActions}>
+                  <Pressable testID="dt-chat" disabled={lockControls} onPress={() => router.push(`/chat/${id}`)} style={[styles.smallIcon, lockControls && styles.iconDisabled]}>
+                    <Ionicons name="chatbubble-ellipses" size={20} color={lockControls ? colors.muted : colors.brandPrimary} />
+                  </Pressable>
+                  <Pressable testID="dt-call" disabled={lockControls} onPress={() => Linking.openURL("tel:+14070000000")} style={[styles.smallIcon, lockControls && styles.iconDisabled]}>
+                    <Ionicons name="call" size={20} color={lockControls ? colors.muted : colors.brandPrimary} />
+                  </Pressable>
                 </View>
               </View>
-              <View style={styles.iconActions}>
-                <Pressable testID="dt-chat" disabled={lockControls} onPress={() => router.push(`/chat/${id}`)} style={[styles.smallIcon, lockControls && styles.iconDisabled]}>
-                  <Ionicons name="chatbubble-ellipses" size={20} color={lockControls ? colors.muted : colors.brandPrimary} />
-                </Pressable>
-                <Pressable testID="dt-call" disabled={lockControls} onPress={() => Linking.openURL("tel:+14070000000")} style={[styles.smallIcon, lockControls && styles.iconDisabled]}>
-                  <Ionicons name="call" size={20} color={lockControls ? colors.muted : colors.brandPrimary} />
-                </Pressable>
-              </View>
-            </View>
 
-            <View style={styles.routeBox}>
-              <View style={styles.routeCol}>
-                <Ionicons name="ellipse" size={9} color={colors.success} />
-                <View style={styles.routeLine} />
-                <Ionicons name="location" size={12} color={colors.brandPrimary} />
+              <View style={styles.routeBox}>
+                <View style={styles.routeCol}>
+                  <Ionicons name="ellipse" size={9} color={colors.success} />
+                  <View style={styles.routeLine} />
+                  <Ionicons name="location" size={12} color={colors.brandPrimary} />
+                </View>
+                <View style={{ flex: 1, gap: spacing.md }}>
+                  <Text style={styles.routeText} numberOfLines={1}>{ride.pickup.label}</Text>
+                  <Text style={styles.routeText} numberOfLines={1}>{ride.destination.label}</Text>
+                </View>
               </View>
-              <View style={{ flex: 1, gap: spacing.md }}>
-                <Text style={styles.routeText} numberOfLines={1}>{ride.pickup.label}</Text>
-                <Text style={styles.routeText} numberOfLines={1}>{ride.destination.label}</Text>
-              </View>
-            </View>
 
-            {step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls || arriveLocked} testID="advance-status" />}
-            {arriveLocked ? (
-              <Text style={styles.lockHint}>You can mark arrival within 300 ft of the pickup{remFt === Infinity ? "" : ` · ${remFt < 5280 ? Math.round(remFt) + " ft" : remMi.toFixed(1) + " mi"} away`}</Text>
-            ) : lockControls ? (
-              <Text style={styles.lockHint}>Trip controls unlock within 1 mile of drop-off · {remMi === Infinity ? "" : remMi.toFixed(1) + " mi left"}</Text>
-            ) : null}
-            {ride.status === "accepted" || ride.status === "arrived" ? (
-              <Pressable testID="dt-cancel" onPress={cancelTrip} disabled={!canCancel} style={styles.cancelRow}>
-                <Text style={[styles.cancelText, !canCancel && styles.cancelDisabled]}>
-                  {canCancel ? "Cancel trip" : `Cancel available in ${Math.floor(cancelSecs / 60)}:${(cancelSecs % 60).toString().padStart(2, "0")}`}
-                </Text>
-              </Pressable>
-            ) : null}
-          </>
-        )}
-      </View>
+              {ride.status === "accepted" || ride.status === "arrived" ? (
+                <Pressable testID="dt-cancel" onPress={cancelTrip} disabled={!canCancel} style={styles.cancelRow}>
+                  <Text style={[styles.cancelText, !canCancel && styles.cancelDisabled]}>
+                    {canCancel ? "Cancel trip" : `Cancel available in ${Math.floor(cancelSecs / 60)}:${(cancelSecs % 60).toString().padStart(2, "0")}`}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -316,7 +375,9 @@ const styles = StyleSheet.create({
   navDist: { fontFamily: font.monoBold, fontSize: 12, color: "#fff", marginTop: 2 },
   navInstruction: { fontFamily: font.bold, fontSize: 16, color: "#fff" },
   navMeta: { fontFamily: font.regular, fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2 },
-  sheet: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: spacing.xl, paddingTop: spacing.md, ...shadow },
+  sheet: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: spacing.xl, paddingTop: spacing.sm, ...shadow },
+  sheetHeader: { paddingBottom: spacing.sm },
+  sheetDetails: { paddingTop: spacing.xs },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.md },
   waiting: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xl },
   waitTitle: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface },
