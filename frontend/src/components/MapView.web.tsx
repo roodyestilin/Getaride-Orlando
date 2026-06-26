@@ -115,6 +115,16 @@ function haversineM(a: number[], b: number[]): number {
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
+// Compass bearing (degrees, 0=N) from point a [lng,lat] to b [lng,lat].
+function bearingDeg(a: number[], b: number[]): number {
+  const toR = Math.PI / 180;
+  const y = Math.sin((b[0] - a[0]) * toR) * Math.cos(b[1] * toR);
+  const x =
+    Math.cos(a[1] * toR) * Math.sin(b[1] * toR) -
+    Math.sin(a[1] * toR) * Math.cos(b[1] * toR) * Math.cos((b[0] - a[0]) * toR);
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
 function fmtDist(m: number): string {
   const ft = m * 3.28084;
   if (ft > 528) return `${(m / 1609.34).toFixed(1)} mi`;
@@ -225,7 +235,8 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat(coords[0] as any).addTo(map);
     if (followRef.current) {
       followingRef.current = true;
-      map.easeTo({ center: coords[0] as any, zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 700 });
+      const initBrng = coords.length > 1 ? bearingDeg(coords[0], coords[Math.min(coords.length - 1, 3)]) : 0;
+      map.easeTo({ center: coords[0] as any, zoom: 16.6, bearing: initBrng, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 700 });
     }
     const first = (steps[1] || steps[0])?.maneuver?.instruction;
     if (first) navStateRef.current = { instruction: first, distanceText: fmtDist(stepEnd[0] || 0), announce: first, announceId: ++announceIdRef.current };
@@ -245,6 +256,18 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
         const dz = t >= 1 ? 16.6 : distToNext < 70 ? 18 : distToNext < 170 ? 17.2 : 16.6;
         const cur = m2.getZoom();
         if (Math.abs(cur - dz) > 0.03) m2.setZoom(cur + (dz - cur) * 0.08);
+        // Heading-up: rotate the map smoothly toward the direction of travel.
+        if (t < 1) {
+          const ahead = positionAt(Math.min(total, traveled + 25), coords, segCum);
+          if (haversineM(pos, ahead) > 1) {
+            const target = bearingDeg(pos, ahead);
+            const curB = m2.getBearing();
+            let db = target - curB;
+            while (db > 180) db -= 360;
+            while (db < -180) db += 360;
+            if (Math.abs(db) > 0.5) m2.setBearing(curB + db * 0.12);
+          }
+        }
       }
       let announce: string | undefined;
       if (t >= 1) {
@@ -498,7 +521,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     followingRef.current = true;
     if (navMode && followRef.current) {
       const c = driverM.current?.getLngLat();
-      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 16.6, bearing: 0, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 500 });
+      if (c) map.easeTo({ center: [c.lng, c.lat], zoom: 16.6, pitch: 0, padding: { top: 170, bottom: 340, left: 30, right: 30 }, duration: 500 });
     } else {
       map.easeTo({ bearing: 0, pitch: 0, duration: 300 });
       fitBounds();

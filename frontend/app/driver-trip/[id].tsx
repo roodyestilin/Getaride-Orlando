@@ -240,14 +240,14 @@ export default function DriverTrip() {
           navFrom={navFrom}
           navTo={navTo}
           pulsePickup={ride.status === "accepted"}
-          follow={ride.status === "in_progress"}
+          follow={navActive}
           recenterKey={recenterKey}
           onRouteInfo={setNavInfo}
           onNavStep={handleNavStep}
           style={StyleSheet.absoluteFill}
         />
       ) : (
-        <MapView pickup={ride.pickup} pulsePickup={ride.status === "arrived"} destination={ride.status === "arrived" ? null : ride.destination} style={StyleSheet.absoluteFill} />
+        <MapView pickup={ride.pickup} pulsePickup={ride.status === "arrived"} destination={ride.destination} style={StyleSheet.absoluteFill} />
       )}
 
       {navActive ? (
