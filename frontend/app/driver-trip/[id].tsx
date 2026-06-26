@@ -186,6 +186,7 @@ export default function DriverTrip() {
         <MapView
           navFrom={navFrom}
           navTo={navTo}
+          pulsePickup={ride.status !== "in_progress"}
           follow={navActive}
           recenterKey={recenterKey}
           onRouteInfo={setNavInfo}

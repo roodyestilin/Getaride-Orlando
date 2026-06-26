@@ -38,7 +38,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#fff" } }}>
-            <Stack.Screen name="chat/[id]" options={{ presentation: "modal" }} />
+            <Stack.Screen name="chat/[id]" options={{ presentation: "modal", gestureEnabled: false }} />
           </Stack>
         </AuthProvider>
       </SafeAreaProvider>

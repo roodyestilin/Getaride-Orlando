@@ -335,12 +335,18 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     if (!map || !loadedRef.current) return;
 
     if (navMode) {
-      // hide pickup/stops; show target pin at navTo
-      if (pickupM.current) { pickupM.current.remove(); pickupM.current = null; }
+      // hide stops; show target pin at navTo (pulsating rider marker when heading to pickup)
       stopMs.current.forEach((m) => m.remove());
       stopMs.current = [];
-      if (!destM.current) destM.current = new mapboxgl.Marker({ color: colors.success }).setLngLat([navTo!.lng, navTo!.lat]).addTo(map);
-      else destM.current.setLngLat([navTo!.lng, navTo!.lat]);
+      if (pulsePickup) {
+        if (destM.current) { destM.current.remove(); destM.current = null; }
+        if (!pickupM.current) pickupM.current = new mapboxgl.Marker({ element: makeCustomerEl() }).setLngLat([navTo!.lng, navTo!.lat]).addTo(map);
+        else pickupM.current.setLngLat([navTo!.lng, navTo!.lat]);
+      } else {
+        if (pickupM.current) { pickupM.current.remove(); pickupM.current = null; }
+        if (!destM.current) destM.current = new mapboxgl.Marker({ color: colors.success }).setLngLat([navTo!.lng, navTo!.lat]).addTo(map);
+        else destM.current.setLngLat([navTo!.lng, navTo!.lat]);
+      }
       updateRoute();
       fitBounds();
       return;
