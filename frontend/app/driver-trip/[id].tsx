@@ -51,6 +51,18 @@ export default function DriverTrip() {
   const voiceRef = useRef<string | undefined>(undefined);
   const lastAnnounceIdRef = useRef<number>(-1);
 
+  // Driver's live device position (web geolocation) — used to draw the car + zoom.
+  const [myPos, setMyPos] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof navigator === "undefined" || !navigator.geolocation) return;
+    const wid = navigator.geolocation.watchPosition(
+      (p) => setMyPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 4000, timeout: 15000 }
+    );
+    return () => { try { navigator.geolocation.clearWatch(wid); } catch {} };
+  }, []);
+
   // ---- Draggable bottom sheet (swipe up to expand, down to collapse) ----
   const sheetTY = useRef(new Animated.Value(0)).current;
   const sheetMeta = useRef({ full: 0, header: 0, collapsedY: 0, rest: 0 });
@@ -247,7 +259,14 @@ export default function DriverTrip() {
           style={StyleSheet.absoluteFill}
         />
       ) : (
-        <MapView pickup={ride.pickup} pulsePickup={ride.status === "arrived"} destination={ride.destination} style={StyleSheet.absoluteFill} />
+        <MapView
+          pickup={ride.pickup}
+          pulsePickup={ride.status === "arrived"}
+          destination={ride.destination}
+          driver={ride.status === "arrived" ? (myPos || ride.pickup) : undefined}
+          focusPoint={ride.status === "arrived" ? (myPos || ride.pickup) : undefined}
+          style={StyleSheet.absoluteFill}
+        />
       )}
 
       {navActive ? (

@@ -16,6 +16,7 @@ type Props = {
   pulsePickup?: boolean;
   destination?: LatLng | null;
   driver?: LatLng | null;
+  focusPoint?: LatLng | null;
   enrouteFrom?: LatLng | null;
   navFrom?: LatLng | null;
   navTo?: LatLng | null;
@@ -152,7 +153,7 @@ function arrivalTime(durationSec: number): string {
 }
 
 
-export default function MapView({ pickup, pulsePickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
+export default function MapView({ pickup, pulsePickup, destination, driver, focusPoint, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -334,6 +335,11 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     const map = mapRef.current;
     if (!map || !autoFit) return;
     if (navMode && followRef.current) return;
+    // Street-level focus (e.g. driver waiting at pickup): keep zoomed in on one point.
+    if (focusPoint && !navMode) {
+      map.easeTo({ center: [focusPoint.lng, focusPoint.lat], zoom: 15.6, duration: 600 });
+      return;
+    }
     const pts: LatLng[] = [];
     if (navMode) {
       pts.push(navFrom!, navTo!);
@@ -458,7 +464,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     if (mapRef.current && size) mapRef.current.resize();
   }, [size]);
 
-  const depKey = JSON.stringify({ pickup, pulsePickup, destination, stops, enrouteFrom, navFrom, navTo, follow });
+  const depKey = JSON.stringify({ pickup, pulsePickup, destination, driver, focusPoint, stops, enrouteFrom, navFrom, navTo, follow });
   useEffect(() => {
     updateAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
