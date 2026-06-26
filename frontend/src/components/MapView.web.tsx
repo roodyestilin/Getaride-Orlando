@@ -427,7 +427,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, enro
     if (mapRef.current && size) mapRef.current.resize();
   }, [size]);
 
-  const depKey = JSON.stringify({ pickup, destination, stops, enrouteFrom, navFrom, navTo, follow });
+  const depKey = JSON.stringify({ pickup, pulsePickup, destination, stops, enrouteFrom, navFrom, navTo, follow });
   useEffect(() => {
     updateAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps

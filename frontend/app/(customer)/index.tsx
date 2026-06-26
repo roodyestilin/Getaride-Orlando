@@ -26,8 +26,10 @@ export default function CustomerHome() {
   const [schedule, setSchedule] = useState(SCHEDULE_OPTIONS[0]);
   const [picker, setPicker] = useState<null | "pickup" | "destination" | "stop">(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const onSelectPlace = (p: LatLng) => {
+    setError(null);
     if (picker === "pickup") setPickup(p);
     else if (picker === "destination") setDestination(p);
     else if (picker === "stop") setStops((s) => [...s, p]);
@@ -106,6 +108,7 @@ export default function CustomerHome() {
   const findRides = async () => {
     if (!destination) return;
     setLoading(true);
+    setError(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       const res: any = await api("/rides", {
@@ -119,8 +122,8 @@ export default function CustomerHome() {
         },
       });
       router.push(`/ride/${res.ride.id}`);
-    } catch {
-      // surfaced via no-op; keep simple
+    } catch (e: any) {
+      setError(e?.message || "Could not request this ride. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -207,6 +210,13 @@ export default function CustomerHome() {
           <Ionicons name="add-circle-outline" size={18} color={colors.brandPrimary} />
           <Text style={styles.addStopText}>Add stop</Text>
         </Pressable>
+
+        {error ? (
+          <View style={styles.errorBox} testID="ride-error">
+            <Ionicons name="alert-circle" size={16} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
         <Button
           title={mode === "now" ? "Find Rides" : "Schedule Ride"}
@@ -312,4 +322,6 @@ const styles = StyleSheet.create({
   pinHint: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: spacing.sm },
   pinHintText: { fontFamily: font.regular, fontSize: 12, color: colors.muted },
   addStopText: { fontFamily: font.semibold, fontSize: 14, color: colors.brandPrimary },
+  errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fef2f2", borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
+  errorText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.error },
 });

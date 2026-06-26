@@ -167,7 +167,7 @@ export default function RideScreen() {
           insets={insets}
         />
       ) : status === "completed" ? (
-        <CompletedSheet ride={ride} track={track} insets={insets} tip={tip} onTip={addTip} />
+        <CompletedSheet ride={ride} track={track} insets={insets} tip={tip} onTip={addTip} rideId={id!} />
       ) : (
         <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} />
       )}
@@ -374,8 +374,35 @@ function TipSection({ tip, onTip }: any) {
   );
 }
 
-function CompletedSheet({ ride, track, insets, tip, onTip }: any) {
+function CompletedSheet({ ride, track, insets, tip, onTip, rideId }: any) {
   const fare = track?.final_fare ?? ride.final_fare ?? ride.recommended_fare;
+  const paid = track?.payment_status === "paid";
+  const total = fare + Number(tip || 0);
+  const [paying, setPaying] = useState(false);
+  const [payErr, setPayErr] = useState<string | null>(null);
+
+  const pay = async () => {
+    setPaying(true);
+    setPayErr(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const r: any = await api(`/payments/checkout/session`, {
+        method: "POST",
+        body: { ride_id: rideId, origin_url: origin },
+      });
+      if (r.url && typeof window !== "undefined") {
+        window.location.href = r.url;
+      } else {
+        setPayErr("Could not start payment. Please try again.");
+        setPaying(false);
+      }
+    } catch (e: any) {
+      setPayErr(e?.message || "Could not start payment. Please try again.");
+      setPaying(false);
+    }
+  };
+
   return (
     <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
       <View style={styles.handle} />
@@ -384,12 +411,36 @@ function CompletedSheet({ ride, track, insets, tip, onTip }: any) {
       </View>
       <Text style={styles.completeTitle}>Trip completed</Text>
       <Text style={styles.completeFare}>${fare.toFixed(2)}</Text>
-      {tip > 0 ? <Text style={styles.completeTip}>+ ${Number(tip).toFixed(2)} tip · Total ${(fare + Number(tip)).toFixed(2)}</Text> : null}
+      {tip > 0 ? <Text style={styles.completeTip}>+ ${Number(tip).toFixed(2)} tip · Total ${total.toFixed(2)}</Text> : null}
       <Text style={styles.completeSub}>{ride.pickup.label} → {ride.destination.label}</Text>
 
-      <TipSection tip={tip} onTip={onTip} />
+      {paid ? (
+        <View style={styles.paidBox} testID="payment-paid">
+          <Ionicons name="card" size={18} color={colors.success} />
+          <Text style={styles.paidText}>Paid ${(track?.paid_amount ?? total).toFixed(2)}</Text>
+        </View>
+      ) : (
+        <TipSection tip={tip} onTip={onTip} />
+      )}
 
-      <Button title="Done" onPress={() => router.replace("/(customer)")} testID="trip-done" style={{ marginTop: spacing.lg }} />
+      {payErr ? <Text style={styles.payErr}>{payErr}</Text> : null}
+
+      {paid ? (
+        <Button title="Done" onPress={() => router.replace("/(customer)")} testID="trip-done" style={{ marginTop: spacing.lg }} />
+      ) : (
+        <>
+          <Button
+            title={`Pay $${total.toFixed(2)}`}
+            onPress={pay}
+            loading={paying}
+            testID="pay-now"
+            style={{ marginTop: spacing.lg }}
+          />
+          <Pressable testID="pay-later" onPress={() => router.replace("/(customer)")}>
+            <Text style={styles.payLater}>Pay later</Text>
+          </Pressable>
+        </>
+      )}
     </View>
   );
 }
@@ -500,4 +551,8 @@ const styles = StyleSheet.create({
   customApplyText: { fontFamily: font.semibold, fontSize: 14, color: "#fff" },
   tipConfirm: { fontFamily: font.semibold, fontSize: 13, color: colors.success, textAlign: "center", marginTop: spacing.md },
   tipSkip: { fontFamily: font.medium, fontSize: 13, color: colors.muted, textAlign: "center", marginTop: spacing.md },
+  paidBox: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: spacing.lg, backgroundColor: "#ecfdf5", borderRadius: radius.md, paddingVertical: spacing.md },
+  paidText: { fontFamily: font.bold, fontSize: 15, color: colors.success },
+  payErr: { fontFamily: font.medium, fontSize: 13, color: colors.error, textAlign: "center", marginTop: spacing.md },
+  payLater: { fontFamily: font.medium, fontSize: 13, color: colors.muted, textAlign: "center", marginTop: spacing.md },
 });

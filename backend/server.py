@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -27,6 +27,11 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALG = "HS256"
 JWT_EXP_DAYS = 30
+
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, CheckoutSessionRequest,
+)
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -78,6 +83,10 @@ def haversine_miles(a, b) -> float:
 
 def round_half(x: float) -> float:
     return round(x * 2) / 2
+
+
+# Service area: trips must start or end within this radius of Orlando (ORLANDO defined above).
+SERVICE_RADIUS_MILES = 100.0
 
 
 def path_distance(pickup, destination, stops) -> float:
@@ -387,7 +396,12 @@ def build_offers(ride: dict) -> List[dict]:
 async def create_ride(req: RideReq, user=Depends(get_current_user)):
     if user["role"] != "customer":
         raise HTTPException(403, "Only customers can request rides")
-    fare = compute_fare(req.pickup.dict(), req.destination.dict(), [s.dict() for s in req.stops])
+    # Service-area rule: a ride must start OR end within 100 miles of Orlando.
+    pu, de = req.pickup.dict(), req.destination.dict()
+    if (haversine_miles(pu, ORLANDO) > SERVICE_RADIUS_MILES
+            and haversine_miles(de, ORLANDO) > SERVICE_RADIUS_MILES):
+        raise HTTPException(400, "Trips must start or end within 100 miles of Orlando.")
+    fare = compute_fare(pu, de, [s.dict() for s in req.stops])
     ride = {
         "id": str(uuid.uuid4()),
         "source": "customer",
@@ -528,7 +542,7 @@ async def track_ride(ride_id: str, user=Depends(get_current_user)):
         await db.rides.update_one({"id": ride_id}, {"$set": {"status": track["status"]}})
     return {**track, "pickup": ride["pickup"], "destination": ride["destination"],
             "assigned_driver": ride.get("assigned_driver"), "tip": ride.get("tip", 0),
-            "final_fare": ride.get("final_fare")}
+            "final_fare": ride.get("final_fare"), "payment_status": ride.get("payment_status", "unpaid")}
 
 
 @api_router.post("/rides/{ride_id}/tip")
@@ -1041,6 +1055,122 @@ async def places(q: str = "", user=Depends(get_current_user)):
     ql = q.lower().strip()
     items = [p for p in ORLANDO_PLACES if ql in p["label"].lower()] if ql else ORLANDO_PLACES
     return {"places": items}
+
+
+# --------------------------------------------------------------------------
+# Payments (Stripe Checkout — test mode)
+# --------------------------------------------------------------------------
+class CheckoutReq(BaseModel):
+    ride_id: str
+    origin_url: str
+
+
+def ride_amount_due(ride: dict) -> float:
+    """Server-authoritative amount = final fare (or recommended) + tip."""
+    fare = ride.get("final_fare") or ride.get("recommended_fare") or 0.0
+    tip = ride.get("tip", 0.0) or 0.0
+    return round(float(fare) + float(tip), 2)
+
+
+@api_router.post("/payments/checkout/session")
+async def create_checkout_session(req: CheckoutReq, request: Request, user=Depends(get_current_user)):
+    ride = await db.rides.find_one({"id": req.ride_id})
+    if not ride:
+        raise HTTPException(404, "Ride not found")
+    if ride.get("customer_id") != user["id"]:
+        raise HTTPException(403, "Only the rider can pay for this trip.")
+    if ride.get("status") != "completed":
+        raise HTTPException(400, "Payment is available once the trip is completed.")
+    if ride.get("payment_status") == "paid":
+        raise HTTPException(400, "This trip has already been paid.")
+
+    amount = ride_amount_due(ride)
+    if amount <= 0:
+        raise HTTPException(400, "Nothing to charge for this trip.")
+
+    host_url = req.origin_url.rstrip("/")
+    success_url = f"{host_url}/payment-return?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{host_url}/ride/{req.ride_id}"
+
+    stripe = StripeCheckout(api_key=STRIPE_API_KEY)
+    session = await stripe.create_checkout_session(CheckoutSessionRequest(
+        amount=amount,
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"ride_id": req.ride_id, "user_id": user["id"], "kind": "ride_payment"},
+    ))
+
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "session_id": session.session_id,
+        "ride_id": req.ride_id,
+        "user_id": user["id"],
+        "amount": amount,
+        "currency": "usd",
+        "payment_status": "initiated",
+        "status": "open",
+        "created_at": now_ts(),
+    })
+    return {"url": session.url, "session_id": session.session_id}
+
+
+@api_router.get("/payments/checkout/status/{session_id}")
+async def checkout_status(session_id: str, user=Depends(get_current_user)):
+    txn = await db.payment_transactions.find_one({"session_id": session_id})
+    if not txn:
+        raise HTTPException(404, "Payment session not found")
+
+    stripe = StripeCheckout(api_key=STRIPE_API_KEY)
+    result = await stripe.get_checkout_status(session_id)
+
+    # Only transition to paid once; keep updates idempotent.
+    if result.payment_status == "paid" and txn.get("payment_status") != "paid":
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {"payment_status": "paid", "status": result.status, "paid_at": now_ts()}},
+        )
+        await db.rides.update_one(
+            {"id": txn["ride_id"]},
+            {"$set": {"payment_status": "paid", "paid_amount": txn["amount"], "paid_at": now_ts()}},
+        )
+    else:
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {"payment_status": result.payment_status, "status": result.status}},
+        )
+
+    return {
+        "status": result.status,
+        "payment_status": result.payment_status,
+        "amount_total": result.amount_total,
+        "currency": result.currency,
+        "ride_id": txn["ride_id"],
+    }
+
+
+@api_router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig = request.headers.get("Stripe-Signature")
+    stripe = StripeCheckout(api_key=STRIPE_API_KEY)
+    try:
+        event = await stripe.handle_webhook(payload, sig)
+    except Exception as e:
+        logger.warning(f"Stripe webhook error: {e}")
+        raise HTTPException(400, "Invalid webhook")
+    if event.payment_status == "paid" and event.session_id:
+        txn = await db.payment_transactions.find_one({"session_id": event.session_id})
+        if txn and txn.get("payment_status") != "paid":
+            await db.payment_transactions.update_one(
+                {"session_id": event.session_id},
+                {"$set": {"payment_status": "paid", "status": "complete", "paid_at": now_ts()}},
+            )
+            await db.rides.update_one(
+                {"id": txn["ride_id"]},
+                {"$set": {"payment_status": "paid", "paid_amount": txn["amount"], "paid_at": now_ts()}},
+            )
+    return {"received": True}
 
 
 app.include_router(api_router)

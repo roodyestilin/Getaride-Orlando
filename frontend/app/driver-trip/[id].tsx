@@ -240,7 +240,7 @@ export default function DriverTrip() {
           navFrom={navFrom}
           navTo={navTo}
           pulsePickup={ride.status === "accepted"}
-          follow={navActive}
+          follow={ride.status === "in_progress"}
           recenterKey={recenterKey}
           onRouteInfo={setNavInfo}
           onNavStep={handleNavStep}
