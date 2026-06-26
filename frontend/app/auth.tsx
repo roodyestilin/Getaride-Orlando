@@ -15,10 +15,13 @@ import * as Haptics from "expo-haptics";
 
 import Logo from "@/src/components/Logo";
 import Button from "@/src/components/Button";
+import SelectField from "@/src/components/SelectField";
+import DocumentField, { DocFile } from "@/src/components/DocumentField";
+import { MAKE_LIST, VEHICLE_MAKES } from "@/src/data/vehicles";
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, spacing } from "@/src/theme";
 
-const STEP_TITLES = ["Your account", "Vehicle details", "License & insurance"];
+const STEP_TITLES = ["Your account", "Vehicle details", "License & documents"];
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
@@ -27,7 +30,8 @@ export default function AuthScreen() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [role, setRole] = useState<"customer" | "driver">("customer");
   const [step, setStep] = useState(0);
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
@@ -38,10 +42,15 @@ export default function AuthScreen() {
   const [plate, setPlate] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [insuranceProvider, setInsuranceProvider] = useState("");
+  const [licenseDoc, setLicenseDoc] = useState<DocFile | null>(null);
+  const [insuranceDoc, setInsuranceDoc] = useState<DocFile | null>(null);
+  const [registrationDoc, setRegistrationDoc] = useState<DocFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isDriverSignup = mode === "signup" && role === "driver";
+  const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+  const modelOptions = vehicleMake ? (VEHICLE_MAKES[vehicleMake] ?? []) : [];
 
   const doRegister = async () => {
     setLoading(true);
@@ -49,7 +58,9 @@ export default function AuthScreen() {
       await signUp({
         email: email.trim(),
         password,
-        name: name.trim(),
+        name: fullName,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
         role,
         phone: phone.trim() || undefined,
         vehicle_make: role === "driver" ? vehicleMake.trim() : undefined,
@@ -59,6 +70,9 @@ export default function AuthScreen() {
         plate: role === "driver" ? plate.trim() : undefined,
         license_number: role === "driver" ? licenseNumber.trim() : undefined,
         insurance_provider: role === "driver" ? insuranceProvider.trim() : undefined,
+        license_doc: role === "driver" ? licenseDoc?.dataUrl : undefined,
+        insurance_doc: role === "driver" ? insuranceDoc?.dataUrl : undefined,
+        registration_doc: role === "driver" ? registrationDoc?.dataUrl : undefined,
       });
     } catch (e: any) {
       setError(e.message || "Authentication failed.");
@@ -76,13 +90,13 @@ export default function AuthScreen() {
       return;
     }
     if (!isDriverSignup) {
-      if (!name || !email || !password) { setError("Please fill in all required fields."); return; }
+      if (!firstName || !lastName || !email || !password) { setError("Please fill in all required fields."); return; }
       doRegister();
       return;
     }
     // Driver multi-step onboarding
     if (step === 0) {
-      if (!name || !email || !password) { setError("Please fill in your account details."); return; }
+      if (!firstName || !lastName || !email || !password) { setError("Please fill in your account details."); return; }
       Haptics.selectionAsync().catch(() => {});
       setStep(1);
       return;
@@ -94,6 +108,7 @@ export default function AuthScreen() {
       return;
     }
     if (!licenseNumber) { setError("Please enter your driver's license number."); return; }
+    if (!licenseDoc || !insuranceDoc || !registrationDoc) { setError("Please upload your license, insurance and registration documents."); return; }
     doRegister();
   };
 
@@ -178,7 +193,14 @@ export default function AuthScreen() {
           {(mode === "login" || !isDriverSignup || step === 0) && (
             <>
               {mode === "signup" && (
-                <Field label="Full name" testID="name-input" value={name} onChangeText={setName} placeholder="Jane Doe" />
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <Field label="First name" testID="first-name-input" value={firstName} onChangeText={setFirstName} placeholder="Jane" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Field label="Last name" testID="last-name-input" value={lastName} onChangeText={setLastName} placeholder="Doe" />
+                  </View>
+                </View>
               )}
               <Field
                 label="Email"
@@ -206,8 +228,26 @@ export default function AuthScreen() {
           {/* Vehicle step */}
           {isDriverSignup && step === 1 && (
             <>
-              <Field label="Make" testID="make-input" value={vehicleMake} onChangeText={setVehicleMake} placeholder="Toyota" />
-              <Field label="Model" testID="model-input" value={vehicleModel} onChangeText={setVehicleModel} placeholder="Camry" />
+              <SelectField
+                label="Make"
+                testID="make-select"
+                value={vehicleMake}
+                options={MAKE_LIST}
+                placeholder="Select make"
+                onSelect={(m) => { setVehicleMake(m); setVehicleModel(""); }}
+              />
+              <SelectField
+                label="Model"
+                testID="model-select"
+                value={vehicleModel}
+                options={modelOptions}
+                placeholder={vehicleMake ? "Select model" : "Select a make first"}
+                disabled={!vehicleMake || modelOptions.length === 0}
+                onSelect={setVehicleModel}
+              />
+              {vehicleMake && modelOptions.length === 0 && (
+                <Field label="Model" testID="model-input" value={vehicleModel} onChangeText={setVehicleModel} placeholder="Enter model" />
+              )}
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
                   <Field label="Year" testID="year-input" value={vehicleYear} onChangeText={setVehicleYear} placeholder="2021" keyboardType="number-pad" />
@@ -220,11 +260,14 @@ export default function AuthScreen() {
             </>
           )}
 
-          {/* License step */}
+          {/* License & documents step */}
           {isDriverSignup && step === 2 && (
             <>
               <Field label="Driver's license number" testID="license-input" value={licenseNumber} onChangeText={setLicenseNumber} placeholder="D123-456-78-901-0" autoCapitalize="characters" />
               <Field label="Insurance provider" testID="insurance-input" value={insuranceProvider} onChangeText={setInsuranceProvider} placeholder="GEICO, State Farm…" />
+              <DocumentField label="Driver's license photo" hint="license (JPEG or PDF)" testID="license-doc" value={licenseDoc} onChange={setLicenseDoc} />
+              <DocumentField label="Insurance document" hint="insurance (JPEG or PDF)" testID="insurance-doc" value={insuranceDoc} onChange={setInsuranceDoc} />
+              <DocumentField label="Vehicle registration" hint="registration (JPEG or PDF)" testID="registration-doc" value={registrationDoc} onChange={setRegistrationDoc} />
               <View style={styles.reviewNote}>
                 <Ionicons name="shield-checkmark-outline" size={18} color={colors.brandPrimary} />
                 <Text style={styles.reviewNoteText}>Your application will be reviewed by Getaride. You can browse the app, but can&apos;t accept rides until you&apos;re approved.</Text>

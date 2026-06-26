@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, ActivityIndicator, Linking, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api, setToken } from "@/src/api";
 import { storage } from "@/src/utils/storage";
@@ -71,6 +71,22 @@ export default function AdminDashboard() {
 
   const setDriverStatus = async (id: string, status: string) => {
     try { await api(`/admin/drivers/${id}/status`, { method: "POST", body: { status } }); await loadUsers(); } catch {}
+  };
+
+  const openDoc = (dataUrl: string) => {
+    if (!dataUrl) return;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const w = window.open();
+      if (w) {
+        if (dataUrl.includes("application/pdf")) {
+          w.document.write(`<iframe src="${dataUrl}" style="border:0;width:100%;height:100%"></iframe>`);
+        } else {
+          w.document.write(`<img src="${dataUrl}" style="max-width:100%" />`);
+        }
+      }
+    } else {
+      Linking.openURL(dataUrl).catch(() => {});
+    }
   };
 
   const sendSupport = async (ride_id: string) => {
@@ -186,6 +202,16 @@ export default function AdminDashboard() {
                 {u.role === "driver" ? <View style={[styles.statusPill, statusColor(u.approval_status)]}><Text style={styles.statusPillText}>{u.approval_status}</Text></View> : null}
               </View>
               <Text style={styles.cardSub}>{u.email}{u.vehicle ? ` · ${u.color || ""} ${u.vehicle} · ${u.plate || ""}` : ""}</Text>
+              {u.role === "driver" && (u.license_number || u.insurance_provider) ? (
+                <Text style={styles.cardSub}>License #{u.license_number || "—"} · {u.insurance_provider || "No insurer"}</Text>
+              ) : null}
+              {u.role === "driver" && (u.license_doc || u.insurance_doc || u.registration_doc) ? (
+                <View style={styles.docRow}>
+                  {u.license_doc ? <DocChip label="License" onPress={() => openDoc(u.license_doc)} tid={`doc-license-${u.id}`} /> : null}
+                  {u.insurance_doc ? <DocChip label="Insurance" onPress={() => openDoc(u.insurance_doc)} tid={`doc-insurance-${u.id}`} /> : null}
+                  {u.registration_doc ? <DocChip label="Registration" onPress={() => openDoc(u.registration_doc)} tid={`doc-registration-${u.id}`} /> : null}
+                </View>
+              ) : null}
               {u.role === "driver" ? (
                 <View style={styles.btnRow}>
                   {u.approval_status !== "approved" ? <Act label="Approve" color={colors.success} onPress={() => setDriverStatus(u.id, "approved")} tid={`approve-${u.id}`} /> : null}
@@ -222,6 +248,14 @@ function statusColor(s: string) {
 }
 function Act({ label, color, onPress, tid }: any) {
   return <Pressable onPress={onPress} testID={tid} style={[styles.act, { borderColor: color }]}><Text style={[styles.actText, { color }]}>{label}</Text></Pressable>;
+}
+function DocChip({ label, onPress, tid }: any) {
+  return (
+    <Pressable onPress={onPress} testID={tid} style={styles.docChip}>
+      <Ionicons name="document-attach-outline" size={14} color={colors.brandPrimary} />
+      <Text style={styles.docChipText}>{label}</Text>
+    </Pressable>
+  );
 }
 function Metric({ label, value, icon }: any) {
   return (
@@ -266,6 +300,9 @@ const styles = StyleSheet.create({
   statusPill: { borderRadius: radius.pill, paddingVertical: 3, paddingHorizontal: spacing.md, backgroundColor: colors.surfaceSecondary },
   statusPillText: { fontFamily: font.semibold, fontSize: 11, color: colors.onSurface, textTransform: "capitalize" },
   btnRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" },
+  docRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, flexWrap: "wrap" },
+  docChip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: spacing.md },
+  docChipText: { fontFamily: font.semibold, fontSize: 12, color: colors.brandPrimary },
   act: { borderWidth: 1.5, borderRadius: radius.md, paddingVertical: 7, paddingHorizontal: spacing.md },
   actText: { fontFamily: font.semibold, fontSize: 13 },
   roleTag: { fontFamily: font.medium, fontSize: 12, color: colors.muted },

@@ -155,6 +155,8 @@ class RegisterReq(BaseModel):
     password: str
     name: str
     role: str  # customer | driver
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     phone: Optional[str] = None
     vehicle: Optional[str] = None
     plate: Optional[str] = None
@@ -164,6 +166,9 @@ class RegisterReq(BaseModel):
     vehicle_color: Optional[str] = None
     license_number: Optional[str] = None
     insurance_provider: Optional[str] = None
+    license_doc: Optional[str] = None
+    insurance_doc: Optional[str] = None
+    registration_doc: Optional[str] = None
 
 
 class LoginReq(BaseModel):
@@ -273,6 +278,8 @@ async def register(req: RegisterReq):
         "email": req.email.lower(),
         "password": hashed,
         "name": req.name,
+        "first_name": req.first_name,
+        "last_name": req.last_name,
         "role": req.role,
         "phone": req.phone,
         "photo": None,
@@ -285,6 +292,9 @@ async def register(req: RegisterReq):
         "vehicle_year": req.vehicle_year if is_driver else None,
         "license_number": req.license_number if is_driver else None,
         "insurance_provider": req.insurance_provider if is_driver else None,
+        "license_doc": req.license_doc if is_driver else None,
+        "insurance_doc": req.insurance_doc if is_driver else None,
+        "registration_doc": req.registration_doc if is_driver else None,
         "approval_status": "pending" if is_driver else "approved",
         "online": False,
         "created_at": now_ts(),

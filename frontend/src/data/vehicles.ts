@@ -1,0 +1,32 @@
+// Popular car makes and their common models (US market) for the driver sign-up flow.
+export const VEHICLE_MAKES: Record<string, string[]> = {
+  Acura: ["ILX", "MDX", "RDX", "TLX", "Integra"],
+  Audi: ["A3", "A4", "A6", "Q3", "Q5", "Q7"],
+  BMW: ["2 Series", "3 Series", "5 Series", "X1", "X3", "X5"],
+  Buick: ["Enclave", "Encore", "Envision"],
+  Cadillac: ["CT4", "CT5", "Escalade", "XT4", "XT5"],
+  Chevrolet: ["Malibu", "Impala", "Cruze", "Equinox", "Traverse", "Tahoe", "Suburban", "Bolt EV"],
+  Chrysler: ["300", "Pacifica", "Voyager"],
+  Dodge: ["Charger", "Challenger", "Durango", "Grand Caravan"],
+  Ford: ["Fusion", "Focus", "Escape", "Explorer", "Edge", "Expedition", "Mustang Mach-E"],
+  GMC: ["Acadia", "Terrain", "Yukon"],
+  Honda: ["Accord", "Civic", "CR-V", "Pilot", "HR-V", "Odyssey", "Insight"],
+  Hyundai: ["Elantra", "Sonata", "Tucson", "Santa Fe", "Kona", "Ioniq 5", "Palisade"],
+  Infiniti: ["Q50", "QX50", "QX60"],
+  Jeep: ["Cherokee", "Grand Cherokee", "Compass", "Wrangler", "Renegade"],
+  Kia: ["Forte", "Optima", "K5", "Sportage", "Sorento", "Telluride", "Niro", "Soul"],
+  Lexus: ["ES", "IS", "RX", "NX", "UX"],
+  Lincoln: ["Corsair", "Nautilus", "Aviator"],
+  Mazda: ["Mazda3", "Mazda6", "CX-30", "CX-5", "CX-9"],
+  "Mercedes-Benz": ["A-Class", "C-Class", "E-Class", "GLA", "GLC", "GLE"],
+  Mitsubishi: ["Outlander", "Eclipse Cross", "Mirage"],
+  Nissan: ["Altima", "Sentra", "Maxima", "Versa", "Rogue", "Murano", "Pathfinder", "Leaf"],
+  Subaru: ["Impreza", "Legacy", "Outback", "Forester", "Crosstrek", "Ascent"],
+  Tesla: ["Model 3", "Model Y", "Model S", "Model X"],
+  Toyota: ["Corolla", "Camry", "Avalon", "Prius", "RAV4", "Highlander", "Sienna", "4Runner", "Venza"],
+  Volkswagen: ["Jetta", "Passat", "Golf", "Tiguan", "Atlas", "ID.4"],
+  Volvo: ["S60", "S90", "XC40", "XC60", "XC90"],
+  Other: [],
+};
+
+export const MAKE_LIST = Object.keys(VEHICLE_MAKES);
