@@ -11,6 +11,7 @@ type Props = {
   hint?: string;
   value: DocFile | null;
   onChange: (file: DocFile | null) => void;
+  imageOnly?: boolean;
   testID?: string;
 };
 
@@ -26,7 +27,7 @@ async function toDataUrl(uri: string): Promise<string> {
   });
 }
 
-export default function DocumentField({ label, hint, value, onChange, testID }: Props) {
+export default function DocumentField({ label, hint, value, onChange, imageOnly, testID }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +36,7 @@ export default function DocumentField({ label, hint, value, onChange, testID }: 
     setLoading(true);
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: ["image/jpeg", "image/png", "application/pdf"],
+        type: imageOnly ? ["image/jpeg", "image/png"] : ["image/jpeg", "image/png", "application/pdf"],
         copyToCacheDirectory: true,
         multiple: false,
       });
@@ -45,9 +46,10 @@ export default function DocumentField({ label, hint, value, onChange, testID }: 
       }
       const asset = res.assets[0];
       const mimeType = asset.mimeType || "application/octet-stream";
-      const okType = mimeType.includes("jpeg") || mimeType.includes("jpg") || mimeType.includes("png") || mimeType.includes("pdf");
+      const isImg = mimeType.includes("jpeg") || mimeType.includes("jpg") || mimeType.includes("png");
+      const okType = imageOnly ? isImg : (isImg || mimeType.includes("pdf"));
       if (!okType) {
-        setError("Please upload a JPEG or PDF file.");
+        setError(imageOnly ? "Please upload a JPEG or PNG photo." : "Please upload a JPEG or PDF file.");
         setLoading(false);
         return;
       }

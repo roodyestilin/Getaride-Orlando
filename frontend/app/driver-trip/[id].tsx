@@ -193,7 +193,7 @@ export default function DriverTrip() {
           style={StyleSheet.absoluteFill}
         />
       ) : (
-        <MapView pickup={ride.pickup} destination={ride.destination} style={StyleSheet.absoluteFill} />
+        <MapView pickup={ride.pickup} pulsePickup={ride.status === "arrived"} destination={ride.status === "arrived" ? null : ride.destination} style={StyleSheet.absoluteFill} />
       )}
 
       {navActive ? (

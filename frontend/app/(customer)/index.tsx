@@ -76,10 +76,22 @@ export default function CustomerHome() {
       navigator.geolocation.getCurrentPosition(
         (pos) => applyCoords(pos.coords.latitude, pos.coords.longitude),
         () => ipFallback(),
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
+      // Refine to a precise live fix as GPS sharpens (esp. on mobile).
+      const wid = navigator.geolocation.watchPosition(
+        (pos) => {
+          if (pos.coords.accuracy && pos.coords.accuracy <= 50) {
+            applyCoords(pos.coords.latitude, pos.coords.longitude);
+            navigator.geolocation.clearWatch(wid);
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+      setTimeout(() => { try { navigator.geolocation.clearWatch(wid); } catch {} }, 20000);
       // Safety net: some embedded browsers never invoke either callback.
-      setTimeout(ipFallback, 9000);
+      setTimeout(ipFallback, 11000);
     } else {
       ipFallback();
     }

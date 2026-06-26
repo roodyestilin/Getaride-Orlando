@@ -55,7 +55,7 @@ export default function ChatScreen() {
         <Pressable testID="chat-back" onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle}>{user?.role === "driver" ? "Rider" : "Driver"}</Text>
+        <Text style={styles.headerTitle}>{String(id).startsWith("support-") ? "Getaride Support" : (user?.role === "driver" ? "Rider" : "Driver")}</Text>
         <View style={{ width: 40 }} />
       </View>
 

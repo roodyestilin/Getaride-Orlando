@@ -17,11 +17,12 @@ import Logo from "@/src/components/Logo";
 import Button from "@/src/components/Button";
 import SelectField from "@/src/components/SelectField";
 import DocumentField, { DocFile } from "@/src/components/DocumentField";
-import { MAKE_LIST, VEHICLE_MAKES } from "@/src/data/vehicles";
+import { MAKE_LIST, VEHICLE_MAKES, VEHICLE_YEARS } from "@/src/data/vehicles";
+import { DRIVER_AGREEMENT_SECTIONS, DRIVER_AGREEMENT_VERSION } from "@/src/data/driverAgreement";
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, spacing } from "@/src/theme";
 
-const STEP_TITLES = ["Your account", "Vehicle details", "License & documents"];
+const STEP_TITLES = ["Your account", "Vehicle details", "License & documents", "Driver Agreement"];
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
@@ -41,7 +42,9 @@ export default function AuthScreen() {
   const [vehicleColor, setVehicleColor] = useState("");
   const [plate, setPlate] = useState("");
   const [licenseNumber, setLicenseNumber] = useState("");
-  const [insuranceProvider, setInsuranceProvider] = useState("");
+  const [ssn, setSsn] = useState("");
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [photo, setPhoto] = useState<DocFile | null>(null);
   const [licenseDoc, setLicenseDoc] = useState<DocFile | null>(null);
   const [insuranceDoc, setInsuranceDoc] = useState<DocFile | null>(null);
   const [registrationDoc, setRegistrationDoc] = useState<DocFile | null>(null);
@@ -63,13 +66,15 @@ export default function AuthScreen() {
         last_name: lastName.trim() || undefined,
         role,
         phone: phone.trim() || undefined,
+        photo: photo?.dataUrl,
         vehicle_make: role === "driver" ? vehicleMake.trim() : undefined,
         vehicle_model: role === "driver" ? vehicleModel.trim() : undefined,
         vehicle_year: role === "driver" ? vehicleYear.trim() : undefined,
         vehicle_color: role === "driver" ? vehicleColor.trim() : undefined,
         plate: role === "driver" ? plate.trim() : undefined,
         license_number: role === "driver" ? licenseNumber.trim() : undefined,
-        insurance_provider: role === "driver" ? insuranceProvider.trim() : undefined,
+        ssn: role === "driver" ? ssn.replace(/\D/g, "") : undefined,
+        agreed_terms: role === "driver" ? agreedTerms : undefined,
         license_doc: role === "driver" ? licenseDoc?.dataUrl : undefined,
         insurance_doc: role === "driver" ? insuranceDoc?.dataUrl : undefined,
         registration_doc: role === "driver" ? registrationDoc?.dataUrl : undefined,
@@ -91,12 +96,14 @@ export default function AuthScreen() {
     }
     if (!isDriverSignup) {
       if (!firstName || !lastName || !email || !password) { setError("Please fill in all required fields."); return; }
+      if (!photo) { setError("Please add a profile photo."); return; }
       doRegister();
       return;
     }
     // Driver multi-step onboarding
     if (step === 0) {
       if (!firstName || !lastName || !email || !password) { setError("Please fill in your account details."); return; }
+      if (!photo) { setError("Please add a profile photo."); return; }
       Haptics.selectionAsync().catch(() => {});
       setStep(1);
       return;
@@ -107,8 +114,15 @@ export default function AuthScreen() {
       setStep(2);
       return;
     }
-    if (!licenseNumber) { setError("Please enter your driver's license number."); return; }
-    if (!licenseDoc || !insuranceDoc || !registrationDoc) { setError("Please upload your license, insurance and registration documents."); return; }
+    if (step === 2) {
+      if (!licenseNumber) { setError("Please enter your driver's license number."); return; }
+      if (ssn.replace(/\D/g, "").length !== 9) { setError("Please enter a valid 9-digit Social Security Number."); return; }
+      if (!licenseDoc || !insuranceDoc || !registrationDoc) { setError("Please upload your license, insurance and registration documents."); return; }
+      Haptics.selectionAsync().catch(() => {});
+      setStep(3);
+      return;
+    }
+    if (!agreedTerms) { setError("You must accept the Driver Agreement to submit your application."); return; }
     doRegister();
   };
 
@@ -137,15 +151,22 @@ export default function AuthScreen() {
 
   let submitLabel = "Sign In";
   if (mode === "signup") {
-    if (isDriverSignup) submitLabel = step < 2 ? "Continue" : "Submit Application";
+    if (isDriverSignup) submitLabel = step < 3 ? "Continue" : "Submit Application";
     else submitLabel = "Create Account";
   }
 
   const subtitle = mode === "login"
     ? "Welcome back. Sign in to continue."
     : isDriverSignup
-      ? "Become a Getaride driver in 3 quick steps."
+      ? "Become a Getaride driver in 4 quick steps."
       : "Create your account to get moving.";
+
+  const formatSsn = (raw: string) => {
+    const d = raw.replace(/\D/g, "").slice(0, 9);
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+  };
 
   return (
     <KeyboardAvoidingView
@@ -222,6 +243,9 @@ export default function AuthScreen() {
               {isDriverSignup && (
                 <Field label="Phone number" testID="phone-input" value={phone} onChangeText={setPhone} placeholder="(407) 555-0123" keyboardType="phone-pad" />
               )}
+              {mode === "signup" && (
+                <DocumentField label="Profile photo" hint="a profile photo (JPEG/PNG)" imageOnly testID="photo-doc" value={photo} onChange={setPhoto} />
+              )}
             </>
           )}
 
@@ -250,13 +274,14 @@ export default function AuthScreen() {
               )}
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
-                  <Field label="Year" testID="year-input" value={vehicleYear} onChangeText={setVehicleYear} placeholder="2021" keyboardType="number-pad" />
+                  <SelectField label="Year" testID="year-select" value={vehicleYear} options={VEHICLE_YEARS} placeholder="Year" searchable={false} onSelect={setVehicleYear} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Field label="Color" testID="color-input" value={vehicleColor} onChangeText={setVehicleColor} placeholder="Silver" />
                 </View>
               </View>
               <Field label="License plate" testID="plate-input" value={plate} onChangeText={setPlate} placeholder="FL 123AB" autoCapitalize="characters" />
+              <Text style={styles.hintText}>Vehicles must be model year 2010 or newer.</Text>
             </>
           )}
 
@@ -264,14 +289,35 @@ export default function AuthScreen() {
           {isDriverSignup && step === 2 && (
             <>
               <Field label="Driver's license number" testID="license-input" value={licenseNumber} onChangeText={setLicenseNumber} placeholder="D123-456-78-901-0" autoCapitalize="characters" />
-              <Field label="Insurance provider" testID="insurance-input" value={insuranceProvider} onChangeText={setInsuranceProvider} placeholder="GEICO, State Farm…" />
+              <Field label="Social Security Number" testID="ssn-input" value={ssn} onChangeText={(t) => setSsn(formatSsn(t))} placeholder="123-45-6789" keyboardType="number-pad" />
+              <Text style={styles.hintText}>Your SSN is verified securely and used only for your background check.</Text>
               <DocumentField label="Driver's license photo" hint="license (JPEG or PDF)" testID="license-doc" value={licenseDoc} onChange={setLicenseDoc} />
               <DocumentField label="Insurance document" hint="insurance (JPEG or PDF)" testID="insurance-doc" value={insuranceDoc} onChange={setInsuranceDoc} />
               <DocumentField label="Vehicle registration" hint="registration (JPEG or PDF)" testID="registration-doc" value={registrationDoc} onChange={setRegistrationDoc} />
-              <View style={styles.reviewNote}>
-                <Ionicons name="shield-checkmark-outline" size={18} color={colors.brandPrimary} />
-                <Text style={styles.reviewNoteText}>Your application will be reviewed by Getaride. You can browse the app, but can&apos;t accept rides until you&apos;re approved.</Text>
+            </>
+          )}
+
+          {/* Driver Agreement step */}
+          {isDriverSignup && step === 3 && (
+            <>
+              <View style={styles.agreementBox}>
+                <ScrollView style={{ maxHeight: 280 }} nestedScrollEnabled showsVerticalScrollIndicator>
+                  <Text style={styles.agreementHeading}>Getaride Driver Agreement</Text>
+                  <Text style={styles.agreementVersion}>Version {DRIVER_AGREEMENT_VERSION} · Orlando, FL</Text>
+                  {DRIVER_AGREEMENT_SECTIONS.map((s) => (
+                    <View key={s.title} style={{ marginTop: spacing.md }}>
+                      <Text style={styles.agreementTitle}>{s.title}</Text>
+                      <Text style={styles.agreementBody}>{s.body}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
               </View>
+              <Pressable testID="agree-checkbox" onPress={() => setAgreedTerms((v) => !v)} style={styles.agreeRow}>
+                <View style={[styles.checkbox, agreedTerms && styles.checkboxOn]}>
+                  {agreedTerms && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </View>
+                <Text style={styles.agreeText}>I have read and agree to the Getaride Driver Agreement and authorize the background and identity checks described above.</Text>
+              </Pressable>
             </>
           )}
 
@@ -375,6 +421,16 @@ const styles = StyleSheet.create({
   backText: { fontFamily: font.semibold, fontSize: 15, color: colors.brandPrimary },
   reviewNote: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md },
   reviewNoteText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.brandPrimary, lineHeight: 18 },
+  hintText: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: -spacing.xs },
+  agreementBox: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.lg, backgroundColor: colors.surfaceSecondary },
+  agreementHeading: { fontFamily: font.bold, fontSize: 16, color: colors.onSurface },
+  agreementVersion: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  agreementTitle: { fontFamily: font.semibold, fontSize: 14, color: colors.onSurface, marginBottom: 2 },
+  agreementBody: { fontFamily: font.regular, fontSize: 13, color: colors.onSurfaceSecondary, lineHeight: 19 },
+  agreeRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, marginTop: spacing.xs },
+  checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  checkboxOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  agreeText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.onSurface, lineHeight: 19 },
   toggle: { marginTop: spacing.xl, alignItems: "center" },
   toggleText: { fontFamily: font.regular, fontSize: 14, color: colors.muted },
   toggleLink: { fontFamily: font.bold, color: colors.brandPrimary },

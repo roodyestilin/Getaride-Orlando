@@ -6,6 +6,7 @@ import os
 import logging
 import math
 import random
+import re
 import uuid
 import time
 from pathlib import Path
@@ -120,12 +121,34 @@ def public_user(u: dict) -> dict:
         "online": u.get("online", False),
         "approval_status": u.get("approval_status", "approved"),
         "color": u.get("color"),
+        "first_name": u.get("first_name"),
+        "last_name": u.get("last_name"),
         "vehicle_make": u.get("vehicle_make"),
         "vehicle_model": u.get("vehicle_model"),
         "vehicle_year": u.get("vehicle_year"),
         "license_number": u.get("license_number"),
-        "insurance_provider": u.get("insurance_provider"),
+        "ssn_last4": u.get("ssn_last4"),
+        "agreed_terms": u.get("agreed_terms"),
     }
+
+
+def verify_ssn(ssn: str) -> bool:
+    """Structural validation of a US Social Security Number.
+    NOTE: This validates the SSN format/structure against official issuance
+    rules. A real existence check requires a paid SSA / third-party verification
+    service, which is not integrated here."""
+    digits = re.sub(r"\D", "", ssn or "")
+    if len(digits) != 9:
+        return False
+    area, group, serial = digits[:3], digits[3:5], digits[5:]
+    if area in ("000", "666") or area[0] == "9":
+        return False
+    if group == "00" or serial == "0000":
+        return False
+    # Reject obvious placeholders / known invalids.
+    if digits in ("078051120", "219099999", "123456789") or len(set(digits)) == 1:
+        return False
+    return True
 
 
 def make_token(user_id: str) -> str:
@@ -158,6 +181,7 @@ class RegisterReq(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone: Optional[str] = None
+    photo: Optional[str] = None
     vehicle: Optional[str] = None
     plate: Optional[str] = None
     vehicle_make: Optional[str] = None
@@ -165,7 +189,8 @@ class RegisterReq(BaseModel):
     vehicle_year: Optional[str] = None
     vehicle_color: Optional[str] = None
     license_number: Optional[str] = None
-    insurance_provider: Optional[str] = None
+    ssn: Optional[str] = None
+    agreed_terms: Optional[bool] = False
     license_doc: Optional[str] = None
     insurance_doc: Optional[str] = None
     registration_doc: Optional[str] = None
@@ -268,10 +293,25 @@ async def register(req: RegisterReq):
     existing = await db.users.find_one({"email": req.email.lower()})
     if existing:
         raise HTTPException(409, "An account with this email already exists")
+    if not req.photo:
+        raise HTTPException(400, "A profile photo is required.")
     hashed = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
     is_driver = req.role == "driver"
     vehicle = req.vehicle
-    if is_driver and not vehicle and (req.vehicle_make or req.vehicle_model):
+    if is_driver:
+        # Vehicle cannot be older than 2010.
+        try:
+            yr = int(req.vehicle_year or 0)
+        except ValueError:
+            yr = 0
+        if yr < 2010:
+            raise HTTPException(400, "Vehicle cannot be older than 2010.")
+        # Social Security Number must be present and structurally valid.
+        if not verify_ssn(req.ssn or ""):
+            raise HTTPException(400, "The Social Security Number could not be verified. Please check and try again.")
+        if not req.agreed_terms:
+            raise HTTPException(400, "You must accept the Driver Agreement to continue.")
+    if not vehicle and is_driver and (req.vehicle_make or req.vehicle_model):
         vehicle = " ".join([p for p in [req.vehicle_year, req.vehicle_make, req.vehicle_model] if p]).strip()
     user = {
         "id": str(uuid.uuid4()),
@@ -282,7 +322,7 @@ async def register(req: RegisterReq):
         "last_name": req.last_name,
         "role": req.role,
         "phone": req.phone,
-        "photo": None,
+        "photo": req.photo,
         "rating": 5.0,
         "vehicle": vehicle if is_driver else None,
         "plate": req.plate if is_driver else None,
@@ -291,7 +331,8 @@ async def register(req: RegisterReq):
         "vehicle_model": req.vehicle_model if is_driver else None,
         "vehicle_year": req.vehicle_year if is_driver else None,
         "license_number": req.license_number if is_driver else None,
-        "insurance_provider": req.insurance_provider if is_driver else None,
+        "ssn_last4": (req.ssn or "")[-4:] if is_driver else None,
+        "agreed_terms": bool(req.agreed_terms) if is_driver else None,
         "license_doc": req.license_doc if is_driver else None,
         "insurance_doc": req.insurance_doc if is_driver else None,
         "registration_doc": req.registration_doc if is_driver else None,
@@ -657,6 +698,18 @@ async def send_message(ride_id: str, req: MessageReq, user=Depends(get_current_u
         "at": now_ts(),
     }
     await db.messages.insert_one(msg)
+    if ride_id.startswith("support-"):
+        # Auto-acknowledge from Getaride Support.
+        await db.messages.insert_one({
+            "id": str(uuid.uuid4()),
+            "ride_id": ride_id,
+            "sender_id": "support",
+            "sender_role": "support",
+            "sender_name": "Getaride Support",
+            "text": random.choice(SUPPORT_REPLIES),
+            "at": now_ts() + 0.5,
+        })
+        return {"ok": True}
     # simulated reply from the other side
     if user["role"] == "customer":
         reply_role, reply_name, pool = "driver", "Driver", DRIVER_REPLIES
@@ -766,6 +819,22 @@ async def inbox(user=Depends(get_current_user)):
             "status": r.get("status"),
         })
     convos.sort(key=lambda c: c["last_at"], reverse=True)
+    # Surface the user's Support thread (if any messages and not deleted).
+    srid = f"support-{user['id']}"
+    s_last = await db.messages.find({"ride_id": srid}, {"_id": 0}).sort("at", -1).to_list(1)
+    if s_last:
+        sm = s_last[0]
+        s_del = del_map.get(srid)
+        if not (s_del and sm["at"] <= s_del):
+            convos.insert(0, {
+                "ride_id": srid,
+                "other_name": "Getaride Support",
+                "last_text": sm["text"],
+                "last_at": sm["at"],
+                "route": "Support",
+                "status": "support",
+                "is_support": True,
+            })
     return {"conversations": convos}
 
 
@@ -777,6 +846,35 @@ async def delete_conversation(ride_id: str, user=Depends(get_current_user)):
         upsert=True,
     )
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------
+# Support chat — a dedicated thread per user (ride_id = "support-<user_id>")
+# --------------------------------------------------------------------------
+SUPPORT_REPLIES = [
+    "Thanks for reaching out to Getaride Support! How can we help you today?",
+    "We've received your message and a support specialist will follow up shortly.",
+    "Got it — we're looking into this for you. Is there anything else we can help with?",
+]
+
+
+@api_router.post("/support/start")
+async def support_start(user=Depends(get_current_user)):
+    rid = f"support-{user['id']}"
+    existing = await db.messages.find_one({"ride_id": rid})
+    if not existing:
+        await db.messages.insert_one({
+            "id": str(uuid.uuid4()),
+            "ride_id": rid,
+            "sender_id": "support",
+            "sender_role": "support",
+            "sender_name": "Getaride Support",
+            "text": "Hi! 👋 You're chatting with Getaride Support. Tell us how we can help and we'll get right back to you.",
+            "at": now_ts(),
+        })
+    # Make sure it's no longer soft-deleted from the user's inbox.
+    await db.conversation_deletes.delete_one({"user_id": user["id"], "ride_id": rid})
+    return {"ride_id": rid}
 
 
 # --------------------------------------------------------------------------
@@ -812,6 +910,19 @@ async def admin_conversations(admin=Depends(require_admin)):
     for rid in ride_ids:
         msgs = await db.messages.find({"ride_id": rid}, {"_id": 0}).sort("at", 1).to_list(500)
         if not msgs:
+            continue
+        if str(rid).startswith("support-"):
+            uid = str(rid).split("support-", 1)[1]
+            u = await db.users.find_one({"id": uid}, {"_id": 0})
+            out.append({
+                "ride_id": rid,
+                "customer_name": (u or {}).get("name") or "User",
+                "driver_name": "Getaride Support",
+                "route": f'Support · {(u or {}).get("role", "user")}',
+                "is_support": True,
+                "messages": msgs,
+                "last_at": msgs[-1]["at"],
+            })
             continue
         ride = await db.rides.find_one({"id": rid}, {"_id": 0})
         out.append({

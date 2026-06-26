@@ -13,6 +13,7 @@ mapboxgl.accessToken = TOKEN;
 
 type Props = {
   pickup?: LatLng | null;
+  pulsePickup?: boolean;
   destination?: LatLng | null;
   driver?: LatLng | null;
   enrouteFrom?: LatLng | null;
@@ -62,6 +63,19 @@ function makeRequestEl(): HTMLDivElement {
     `<span style="position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:${colors.brandPrimary}40;animation:gar-pulse 1.8s ease-out infinite;"></span>` +
     `<span style="position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:${colors.brandPrimary};border:2.5px solid #fff;box-shadow:0 2px 7px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">` +
     `<svg width="9" height="9" viewBox="0 0 384 512" fill="#fff"><path d="M215.7 499.2C267 435 384 279.4 384 192C384 86 298 0 192 0S0 86 0 192c0 87.4 117 243 168.3 307.2c12.3 15.3 35.1 15.3 47.4 0z"/></svg>` +
+    `</span>`;
+  return el;
+}
+
+function makeCustomerEl(): HTMLDivElement {
+  ensurePulseStyle();
+  const el = document.createElement("div");
+  el.style.cssText = "position:relative;width:30px;height:30px;";
+  el.innerHTML =
+    `<span style="position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:${colors.success}55;animation:gar-pulse 1.6s ease-out infinite;"></span>` +
+    `<span style="position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:${colors.success}33;animation:gar-pulse 1.6s ease-out infinite .8s;"></span>` +
+    `<span style="position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:${colors.success};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;">` +
+    `<svg width="13" height="13" viewBox="0 0 448 512" fill="#fff"><path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z"/></svg>` +
     `</span>`;
   return el;
 }
@@ -128,7 +142,7 @@ function arrivalTime(durationSec: number): string {
 }
 
 
-export default function MapView({ pickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
+export default function MapView({ pickup, pulsePickup, destination, driver, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -334,8 +348,10 @@ export default function MapView({ pickup, destination, driver, enrouteFrom, navF
 
     if (pickup) {
       if (!pickupM.current) {
-        pickupM.current = new mapboxgl.Marker({ color: colors.success, draggable: !!onPickupChange }).setLngLat([pickup.lng, pickup.lat]).addTo(map);
-        if (onPickupChange) {
+        pickupM.current = pulsePickup
+          ? new mapboxgl.Marker({ element: makeCustomerEl() }).setLngLat([pickup.lng, pickup.lat]).addTo(map)
+          : new mapboxgl.Marker({ color: colors.success, draggable: !!onPickupChange }).setLngLat([pickup.lng, pickup.lat]).addTo(map);
+        if (onPickupChange && !pulsePickup) {
           pickupM.current.on("dragend", () => {
             const ll = pickupM.current!.getLngLat();
             onPickupChange({ lat: ll.lat, lng: ll.lng });

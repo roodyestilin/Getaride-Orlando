@@ -30,6 +30,13 @@ export default function InboxList() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const startSupport = async () => {
+    try {
+      const res: any = await api("/support/start", { method: "POST" });
+      router.push(`/chat/${res.ride_id}`);
+    } catch {}
+  };
+
   const remove = (ride_id: string) => {
     const doDelete = async () => {
       setConvos((c) => c.filter((x) => x.ride_id !== ride_id));
@@ -52,6 +59,18 @@ export default function InboxList() {
         data={convos}
         keyExtractor={(c) => c.ride_id}
         contentContainerStyle={{ padding: spacing.xl, paddingTop: spacing.md, gap: spacing.md, paddingBottom: insets.bottom + 80 }}
+        ListHeaderComponent={
+          <Pressable testID="contact-support" onPress={startSupport} style={styles.supportBtn}>
+            <View style={styles.supportIcon}>
+              <Ionicons name="headset" size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.supportTitle}>Getaride Support</Text>
+              <Text style={styles.supportSub}>Need help? Start a chat with our team.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </Pressable>
+        }
         ListEmptyComponent={
           loaded ? (
             <View style={styles.empty}>
@@ -67,8 +86,8 @@ export default function InboxList() {
             testID={`convo-${item.ride_id}`}
             onPress={() => router.push(`/chat/${item.ride_id}`)}
           >
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={20} color={colors.brandPrimary} />
+            <View style={[styles.avatar, item.is_support && styles.supportAvatar]}>
+              <Ionicons name={item.is_support ? "headset" : "person"} size={20} color={item.is_support ? "#fff" : colors.brandPrimary} />
             </View>
             <View style={{ flex: 1 }}>
               <View style={styles.rowTop}>
@@ -98,6 +117,11 @@ const styles = StyleSheet.create({
   title: { fontFamily: font.bold, fontSize: 26, color: colors.onSurface, paddingHorizontal: spacing.xl },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, ...shadowSoft },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+  supportAvatar: { backgroundColor: colors.brandPrimary },
+  supportBtn: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.xs, ...shadowSoft },
+  supportIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  supportTitle: { fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
+  supportSub: { fontFamily: font.regular, fontSize: 13, color: colors.onSurfaceSecondary, marginTop: 2 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   name: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
   time: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginLeft: spacing.sm },

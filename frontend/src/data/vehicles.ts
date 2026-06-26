@@ -30,3 +30,11 @@ export const VEHICLE_MAKES: Record<string, string[]> = {
 };
 
 export const MAKE_LIST = Object.keys(VEHICLE_MAKES);
+
+// Vehicles cannot be older than 2010. Newest first.
+const CURRENT_YEAR = new Date().getFullYear();
+export const VEHICLE_YEARS: string[] = Array.from(
+  { length: CURRENT_YEAR - 2010 + 1 },
+  (_, i) => String(CURRENT_YEAR - i),
+);
+
