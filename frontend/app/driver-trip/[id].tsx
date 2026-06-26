@@ -176,6 +176,11 @@ export default function DriverTrip() {
   const navFrom = ride.status === "in_progress" ? ride.pickup : ride.assigned_driver?.start;
   const navTo = ride.status === "in_progress" ? ride.destination : ride.pickup;
   const remMi = (navStep?.remainingM ?? Infinity) / 1609.34;
+  const remFt = (navStep?.remainingM ?? Infinity) * 3.28084;
+  const within2mi = remMi <= 2;
+  const within300ft = remFt <= 300;
+  // Disable "I've Arrived" until the driver is ~300 ft from pickup.
+  const arriveLocked = ride.status === "accepted" && !within300ft;
   const lockControls = ride.status === "in_progress" && remMi > 1;
   const cancelSecs = ride.accepted_at ? Math.max(0, Math.ceil(240 - (Date.now() / 1000 - ride.accepted_at))) : 240;
   const canCancel = cancelSecs <= 0;
@@ -186,7 +191,7 @@ export default function DriverTrip() {
         <MapView
           navFrom={navFrom}
           navTo={navTo}
-          pulsePickup={ride.status !== "in_progress"}
+          pulsePickup={ride.status === "accepted" && within2mi}
           follow={navActive}
           recenterKey={recenterKey}
           onRouteInfo={setNavInfo}
@@ -280,8 +285,12 @@ export default function DriverTrip() {
               </View>
             </View>
 
-            {step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls} testID="advance-status" />}
-            {lockControls ? <Text style={styles.lockHint}>Trip controls unlock within 1 mile of drop-off · {remMi === Infinity ? "" : remMi.toFixed(1) + " mi left"}</Text> : null}
+            {step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls || arriveLocked} testID="advance-status" />}
+            {arriveLocked ? (
+              <Text style={styles.lockHint}>You can mark arrival within 300 ft of the pickup{remFt === Infinity ? "" : ` · ${remFt < 5280 ? Math.round(remFt) + " ft" : remMi.toFixed(1) + " mi"} away`}</Text>
+            ) : lockControls ? (
+              <Text style={styles.lockHint}>Trip controls unlock within 1 mile of drop-off · {remMi === Infinity ? "" : remMi.toFixed(1) + " mi left"}</Text>
+            ) : null}
             {ride.status === "accepted" || ride.status === "arrived" ? (
               <Pressable testID="dt-cancel" onPress={cancelTrip} disabled={!canCancel} style={styles.cancelRow}>
                 <Text style={[styles.cancelText, !canCancel && styles.cancelDisabled]}>
