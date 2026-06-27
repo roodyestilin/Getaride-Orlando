@@ -78,6 +78,14 @@ export default function CustomerHome() {
     const applyCoords = async (lat: number, lng: number) => {
       if (resolved) return;
       resolved = true;
+      // Operating area: ignore auto-detected pickups outside ~100 miles of Orlando.
+      {
+        const toR = Math.PI / 180;
+        const dLat = (lat - 28.5384) * toR;
+        const dLng = (lng + 81.3789) * toR;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat * toR) * Math.cos(28.5384 * toR) * Math.sin(dLng / 2) ** 2;
+        if (3958.8 * 2 * Math.asin(Math.sqrt(a)) > 100) { resolved = true; return; }
+      }
       setPickup({ lat, lng, label: "Locating…" });
       const label = await reverseGeocode(lng, lat);
       setPickup({ lat, lng, label });
