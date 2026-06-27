@@ -65,9 +65,49 @@ SIM_DRIVERS = [
 SIM_CUSTOMERS = ["Jordan P.", "Emily R.", "Carlos M.", "Nina S.", "Derek T.", "Olivia W."]
 
 ORLANDO_PLACES = [
-    {"label": "Orlando Intl Airport (MCO)", "lat": 28.4312, "lng": -81.3081},
+    {"label": "Orlando Intl Airport (MCO)", "lat": 28.4312, "lng": -81.3081, "airport": True, "iata": "MCO"},
+    {"label": "Orlando Sanford Intl Airport (SFB)", "lat": 28.7776, "lng": -81.2375, "airport": True, "iata": "SFB"},
+    # Disney resorts
+    {"label": "Disney's Grand Floridian Resort & Spa", "lat": 28.4108, "lng": -81.5866},
+    {"label": "Disney's Contemporary Resort", "lat": 28.4153, "lng": -81.5739},
+    {"label": "Disney's Polynesian Village Resort", "lat": 28.4071, "lng": -81.5829},
+    {"label": "Disney's Animal Kingdom Lodge", "lat": 28.3553, "lng": -81.6019},
+    {"label": "Disney's Caribbean Beach Resort", "lat": 28.3861, "lng": -81.5497},
+    {"label": "Disney's Coronado Springs Resort", "lat": 28.3578, "lng": -81.5727},
+    {"label": "Disney's Pop Century Resort", "lat": 28.3527, "lng": -81.5418},
+    # Universal & area resorts
+    {"label": "Loews Portofino Bay Hotel (Universal)", "lat": 28.4727, "lng": -81.4651},
+    {"label": "Hard Rock Hotel (Universal)", "lat": 28.4744, "lng": -81.4671},
+    {"label": "Universal's Cabana Bay Beach Resort", "lat": 28.4660, "lng": -81.4628},
+    {"label": "Loews Royal Pacific Resort (Universal)", "lat": 28.4690, "lng": -81.4690},
+    # Hotels & resorts
+    {"label": "Hilton Orlando Bonnet Creek", "lat": 28.3506, "lng": -81.5366},
+    {"label": "Waldorf Astoria Orlando", "lat": 28.3470, "lng": -81.5380},
+    {"label": "Gaylord Palms Resort & Convention Center", "lat": 28.3380, "lng": -81.5052},
+    {"label": "JW Marriott Orlando Grande Lakes", "lat": 28.3811, "lng": -81.4439},
+    {"label": "The Ritz-Carlton Orlando, Grande Lakes", "lat": 28.3776, "lng": -81.4416},
+    {"label": "Rosen Shingle Creek", "lat": 28.3839, "lng": -81.4290},
+    {"label": "Hyatt Regency Orlando", "lat": 28.4256, "lng": -81.4699},
+    {"label": "Orlando World Center Marriott", "lat": 28.3618, "lng": -81.5008},
+    {"label": "Caribe Royale Orlando", "lat": 28.3573, "lng": -81.4760},
+    {"label": "Wyndham Grand Orlando Resort Bonnet Creek", "lat": 28.3502, "lng": -81.5300},
+    {"label": "DoubleTree by Hilton Orlando at SeaWorld", "lat": 28.4133, "lng": -81.4615},
+    {"label": "Renaissance Orlando at SeaWorld", "lat": 28.4116, "lng": -81.4612},
+    {"label": "Hilton Orlando", "lat": 28.4256, "lng": -81.4536},
+    {"label": "Marriott's Grande Vista", "lat": 28.4290, "lng": -81.4790},
+    {"label": "Floridays Resort Orlando", "lat": 28.3958, "lng": -81.4760},
+    {"label": "Westgate Lakes Resort & Spa", "lat": 28.4078, "lng": -81.4880},
+    {"label": "Holiday Inn Orlando – Disney Springs Area", "lat": 28.3700, "lng": -81.5180},
+    {"label": "Motel 6 Orlando – International Drive", "lat": 28.4500, "lng": -81.4690},
+    {"label": "Super 8 by Wyndham Kissimmee/Maingate", "lat": 28.3380, "lng": -81.4810},
+    {"label": "Days Inn by Wyndham Orlando International Drive", "lat": 28.4520, "lng": -81.4700},
+    # Landmarks
     {"label": "Universal Studios Florida", "lat": 28.4754, "lng": -81.4685},
+    {"label": "Universal's Islands of Adventure", "lat": 28.4719, "lng": -81.4716},
     {"label": "Walt Disney World", "lat": 28.3852, "lng": -81.5639},
+    {"label": "Disney Springs", "lat": 28.3700, "lng": -81.5180},
+    {"label": "SeaWorld Orlando", "lat": 28.4112, "lng": -81.4615},
+    {"label": "Orange County Convention Center", "lat": 28.4264, "lng": -81.4690},
     {"label": "Lake Eola Park", "lat": 28.5439, "lng": -81.3729},
     {"label": "Amway Center", "lat": 28.5392, "lng": -81.3839},
     {"label": "Winter Park Village", "lat": 28.5997, "lng": -81.3517},
@@ -224,6 +264,14 @@ class Place(BaseModel):
     label: str
     lat: float
     lng: float
+    airport: Optional[bool] = False
+
+
+class AirportInfo(BaseModel):
+    direction: str  # "to" | "from"
+    airline: str
+    bags: int = 0
+    flight_number: Optional[str] = None
 
 
 class RideReq(BaseModel):
@@ -232,6 +280,7 @@ class RideReq(BaseModel):
     stops: List[Place] = []
     when: str = "now"  # now | scheduled
     scheduled_time: Optional[str] = None
+    airport_info: Optional[AirportInfo] = None
 
 
 class SelectReq(BaseModel):
@@ -425,6 +474,7 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "stops": [s.dict() for s in req.stops],
         "when": req.when,
         "scheduled_time": req.scheduled_time,
+        "airport_info": req.airport_info.dict() if req.airport_info else None,
         "status": "searching",
         "assigned_driver": None,
         "selected_offer_id": None,

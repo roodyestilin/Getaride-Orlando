@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 10 — Verified all three new features end-to-end. Backend: 9/9 pytest tests pass (curated places list incl. MCO+SFB+hotels, /places filter, airport_info persistence both directions, service-area 100-mile rule still enforced, multi-stop ride creation, driver status progression). Frontend (mobile viewport 390x844): place picker quick-picks include MCO/SFB/Hilton; Mapbox live search returned 5 'Hilton' POIs; airport-card renders 'Airport drop-off details' for destination=MCO and 'Airport pickup details' with flight-input for pickup=MCO; ride-error blocks Find Rides until airline (and flight # when pickup is airport) provided; airline-select + bags-plus/minus work; ride created successfully. Driver-trip screen verified for a ride with stops + airport_info: 'Going to Stop 1 of 2' banner + 'dt-airport-info' row showing 'Airport drop-off · Delta Air Lines · 2 bags' both render. stop-wait/continue-stop are gated on ~300ft proximity (per code) and not exercised here (matches the agent_to_agent_context_note).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Customer Home (auto-pickup)", "issues": [
+        "IP-based geolocation fallback (ipapi.co) can place pickup hundreds of miles away (e.g. Council Bluffs, IA in the preview), which still passes the service-area rule when destination is in Orlando but produces non-sensical 1200-mi fares (~$2768). Consider clamping the IP fallback to the Orlando service area or only fallback to Lake Eola default outside FL. Reference: /app/frontend/app/(customer)/index.tsx:74-122."
+      ]}
+    ],
+    "react_native_issues": [
+      {"component": "expo packages out of date", "issue": "Expo CLI logs 'packages should be updated': expo@54.0.34 (~54.0.35), expo-font@14.0.11 (~14.0.12), expo-router@6.0.23 (~6.0.24). Non-blocking but recommend `npx expo install --check` to align. Reference: /var/log/supervisor/expo.err.log."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_places_airport_stops.py",
+    "/app/test_reports/pytest/iter10_new_features.xml"
+  ],
+  "action_items": [
+    "(Optional UX) Constrain the customer Home auto-pickup IP fallback so it doesn't snap to Council Bluffs / out-of-state — either skip the fallback unless lat/lng is within ~150 mi of Orlando, or revert to Lake Eola default. Not a regression but creates surprising $2700 fares.",
+    "(Optional) Run `npx expo install --check` and bump expo/expo-font/expo-router patch versions per Expo CLI recommendation."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to ~1422 lines — consider splitting payments / admin / driver modules in a future refactor.",
+    "PlacePicker live search relies on Mapbox bbox=-83.03,27.09,-79.73,29.99 which is roughly central Florida — good. No PII leaks observed.",
+    "airport_info is correctly typed via Pydantic AirportInfo model and persisted on the ride document; driver-trip reads the same shape."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter10_places_airport_stops.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% on the three new flows (places quick-picks, airport-to with airline gate, airport-from with flight gate, driver multi-stop banner + airport-info row)"},
+  "seed_data_creation": "Injected stops + airport_info into the driver's active sim ride via /tmp/inject_stops.py to render the multi-stop UI; this is test-only data and does not pollute customer/admin views.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "stop-wait / continue-stop testIDs only render once remaining distance to the next stop is < ~300ft (per driver-trip code). Naturally reaching that in automation isn't feasible — either mock the driver's geolocation to the stop coords via Playwright context.set_geolocation OR use direct DB to set `assigned_driver.start` near the stop and accept_at in the past. For the multi-stop banner the simplest path is: bid as driver on a sim ride, then via Motor update set ride.stops to a list and ride.status='in_progress', then load /driver-trip/<id>.",
+  "rca_of_issue": "N/A — no failures observed."
+}

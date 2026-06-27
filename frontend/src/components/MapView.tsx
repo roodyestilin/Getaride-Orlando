@@ -4,7 +4,7 @@ import Svg, { Line, Path, Circle } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/src/theme";
 
-export type LatLng = { lat: number; lng: number; label?: string };
+export type LatLng = { lat: number; lng: number; label?: string; airport?: boolean };
 
 type Props = {
   pickup?: LatLng | null;

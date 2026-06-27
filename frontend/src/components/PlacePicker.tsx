@@ -26,16 +26,18 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
       const token = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
       const url =
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
-        `?access_token=${token}&proximity=-81.3789,28.5384&country=us&limit=6&types=address,poi,place,neighborhood`;
+        `?access_token=${token}&proximity=-81.3789,28.5384&country=us&limit=10` +
+        `&bbox=-83.03,27.09,-79.73,29.99&types=poi,address,place,neighborhood`;
       fetch(url)
         .then((r) => r.json())
         .then((j: any) => {
           if (!active) return;
-          const feats = (j?.features || []).map((f: any) => ({
-            label: f.place_name || f.text,
-            lat: f.center[1],
-            lng: f.center[0],
-          }));
+          const feats = (j?.features || []).map((f: any) => {
+            const cats = (f.properties?.category || "").toLowerCase();
+            const label = f.place_name || f.text;
+            const isAirport = cats.includes("airport") || /airport/i.test(label);
+            return { label, lat: f.center[1], lng: f.center[0], airport: isAirport };
+          });
           setPlaces(feats);
         })
         .catch(() => {});
@@ -83,7 +85,7 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
               testID={`place-option-${item.label}`}
               style={styles.row}
               onPress={() => {
-                onSelect({ lat: item.lat, lng: item.lng, label: item.label });
+                onSelect({ lat: item.lat, lng: item.lng, label: item.label, airport: !!item.airport });
                 setQuery("");
                 onClose();
               }}

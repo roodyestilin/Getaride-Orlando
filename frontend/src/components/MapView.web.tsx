@@ -4,7 +4,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { colors } from "@/src/theme";
 
-export type LatLng = { lat: number; lng: number; label?: string };
+export type LatLng = { lat: number; lng: number; label?: string; airport?: boolean };
 export type NavStep = { instruction: string; distanceText: string; type?: string; modifier?: string; announce?: string; announceId?: number; remainingM?: number };
 export type RouteInfo = { distanceText: string; durationText: string; arrivalText: string };
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import * as Haptics from "expo-haptics";
 
 import MapView, { LatLng } from "@/src/components/MapView";
 import PlacePicker from "@/src/components/PlacePicker";
+import SelectField from "@/src/components/SelectField";
 import Button from "@/src/components/Button";
 import Logo from "@/src/components/Logo";
 import { api } from "@/src/api";
@@ -16,6 +17,13 @@ import { colors, font, radius, shadow, spacing } from "@/src/theme";
 const DEFAULT_PICKUP: LatLng = { lat: 28.5439, lng: -81.3729, label: "Lake Eola Park" };
 
 const SCHEDULE_OPTIONS = ["In 30 min", "In 1 hour", "In 2 hours", "Tonight"];
+
+const AIRLINES = [
+  "American Airlines", "Delta Air Lines", "United Airlines", "Southwest Airlines",
+  "JetBlue", "Spirit Airlines", "Frontier Airlines", "Alaska Airlines",
+  "Allegiant Air", "Sun Country", "Breeze Airways", "Air Canada",
+  "British Airways", "Lufthansa", "Other",
+];
 
 export default function CustomerHome() {
   const insets = useSafeAreaInsets();
@@ -28,6 +36,9 @@ export default function CustomerHome() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needCard, setNeedCard] = useState(false);
+  const [airline, setAirline] = useState("");
+  const [flightNumber, setFlightNumber] = useState("");
+  const [bags, setBags] = useState(1);
 
   useFocusEffect(
     useCallback(() => {
@@ -116,8 +127,21 @@ export default function CustomerHome() {
     setPickup({ lat: p.lat, lng: p.lng, label });
   };
 
+  const fromAirport = !!pickup?.airport;
+  const toAirport = !!destination?.airport;
+  const isAirportTrip = fromAirport || toAirport;
+  const airportReady =
+    !isAirportTrip ||
+    (!!airline && bags >= 0 && (!fromAirport || flightNumber.trim().length >= 2));
+
   const findRides = async () => {
     if (!destination) return;
+    if (isAirportTrip && !airportReady) {
+      setError(fromAirport
+        ? "Please add your arrival flight, airline and bag count."
+        : "Please add your airline and bag count.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -130,6 +154,14 @@ export default function CustomerHome() {
           stops,
           when: mode,
           scheduled_time: mode === "scheduled" ? schedule : null,
+          airport_info: isAirportTrip
+            ? {
+                direction: fromAirport ? "from" : "to",
+                airline,
+                bags,
+                flight_number: fromAirport ? flightNumber.trim() : null,
+              }
+            : null,
         },
       });
       router.push(`/ride/${res.ride.id}`);
@@ -221,6 +253,50 @@ export default function CustomerHome() {
           <Ionicons name="add-circle-outline" size={18} color={colors.brandPrimary} />
           <Text style={styles.addStopText}>Add stop</Text>
         </Pressable>
+
+        {isAirportTrip ? (
+          <View style={styles.airportCard} testID="airport-card">
+            <View style={styles.airportHeader}>
+              <Ionicons name="airplane" size={16} color={colors.brandPrimary} />
+              <Text style={styles.airportTitle}>{fromAirport ? "Airport pickup details" : "Airport drop-off details"}</Text>
+            </View>
+
+            {fromAirport ? (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={styles.airportLabel}>Arrival flight number</Text>
+                <TextInput
+                  testID="flight-input"
+                  style={styles.airportInput}
+                  placeholder="e.g. AA1234"
+                  placeholderTextColor={colors.muted}
+                  autoCapitalize="characters"
+                  value={flightNumber}
+                  onChangeText={(t) => { setFlightNumber(t); setError(null); }}
+                />
+              </View>
+            ) : null}
+
+            <SelectField
+              label="Airline"
+              testID="airline-select"
+              value={airline}
+              options={AIRLINES}
+              placeholder="Select airline"
+              onSelect={(v: string) => { setAirline(v); setError(null); }}
+            />
+
+            <Text style={[styles.airportLabel, { marginTop: spacing.md }]}>Number of bags</Text>
+            <View style={styles.bagsRow}>
+              <Pressable testID="bags-minus" onPress={() => setBags((b) => Math.max(0, b - 1))} style={styles.bagsBtn}>
+                <Ionicons name="remove" size={20} color={colors.onSurface} />
+              </Pressable>
+              <Text style={styles.bagsCount} testID="bags-count">{bags}</Text>
+              <Pressable testID="bags-plus" onPress={() => setBags((b) => Math.min(20, b + 1))} style={styles.bagsBtn}>
+                <Ionicons name="add" size={20} color={colors.onSurface} />
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         {needCard ? (
           <Pressable testID="add-card-banner" onPress={() => router.push("/payment-methods")} style={styles.cardBanner}>
@@ -345,4 +421,12 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.error },
   cardBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   cardBannerText: { flex: 1, fontFamily: font.semibold, fontSize: 13, color: colors.brandPrimary },
+  airportCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.md },
+  airportHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.md },
+  airportTitle: { fontFamily: font.bold, fontSize: 14, color: colors.onSurface },
+  airportLabel: { fontFamily: font.semibold, fontSize: 12, color: colors.muted, marginBottom: 6 },
+  airportInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.md, height: 46, fontFamily: font.regular, fontSize: 15, color: colors.onSurface, backgroundColor: colors.surface },
+  bagsRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
+  bagsBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary },
+  bagsCount: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface, minWidth: 28, textAlign: "center" },
 });

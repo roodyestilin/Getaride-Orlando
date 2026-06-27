@@ -43,6 +43,8 @@ export default function DriverTrip() {
   const [busy, setBusy] = useState(false);
   const [navInfo, setNavInfo] = useState<{ distanceText: string; durationText: string; arrivalText: string } | null>(null);
   const [navStep, setNavStep] = useState<{ instruction: string; distanceText: string; type?: string; modifier?: string } | null>(null);
+  const [legIndex, setLegIndex] = useState(0);
+  const stopArrivedRef = useRef<{ idx: number; at: number } | null>(null);
   const doneRef = useRef(false);
   const [recenterKey, setRecenterKey] = useState(0);
   const [voiceOn, setVoiceOn] = useState(true);
@@ -187,6 +189,14 @@ export default function DriverTrip() {
     return () => clearInterval(iv);
   }, [poll]);
 
+  // Reset multi-stop progress whenever we leave the in-progress phase.
+  useEffect(() => {
+    if (ride?.status !== "in_progress") {
+      setLegIndex(0);
+      stopArrivedRef.current = null;
+    }
+  }, [ride?.status]);
+
   const advance = async () => {
     const step = NEXT[ride.status];
     if (!step) return;
@@ -234,14 +244,40 @@ export default function DriverTrip() {
   const waiting = ride.status === "searching";
   const step = NEXT[ride.status];
   const navActive = ride.status === "accepted" || ride.status === "in_progress";
-  const navFrom = ride.status === "in_progress" ? ride.pickup : ride.assigned_driver?.start;
-  const navTo = ride.status === "in_progress" ? ride.destination : ride.pickup;
+
+  // Multi-stop legs during the trip: pickup -> stop1 -> stop2 -> ... -> destination.
+  const stops: any[] = ride.stops || [];
+  const legs: any[] = stops.length ? [...stops, ride.destination] : [ride.destination];
+  const curLeg = Math.min(legIndex, legs.length - 1);
+  const isStopLeg = ride.status === "in_progress" && stops.length > 0 && curLeg < stops.length;
+  const legPrev = curLeg === 0 ? ride.pickup : legs[curLeg - 1];
+
+  const navFrom = ride.status === "in_progress" ? legPrev : ride.assigned_driver?.start;
+  const navTo = ride.status === "in_progress" ? legs[curLeg] : ride.pickup;
   const remMi = (navStep?.remainingM ?? Infinity) / 1609.34;
   const remFt = (navStep?.remainingM ?? Infinity) * 3.28084;
   const within300ft = remFt <= 300;
+
+  // Detect arrival at the current stop (~400 ft) and start the 3-minute wait timer.
+  const atStop = isStopLeg && remFt <= 400;
+  if (atStop && (!stopArrivedRef.current || stopArrivedRef.current.idx !== curLeg)) {
+    stopArrivedRef.current = { idx: curLeg, at: Date.now() / 1000 };
+  }
+  const stopWaitSecs = atStop && stopArrivedRef.current ? Math.max(0, Math.ceil(180 - (Date.now() / 1000 - stopArrivedRef.current.at))) : 0;
+
+  const nextLegLabel = curLeg + 1 < stops.length ? `Stop ${curLeg + 2}` : "destination";
+  const goNextStop = () => {
+    unlockSpeech();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    stopArrivedRef.current = null;
+    setLegIndex((i) => i + 1);
+    if (voiceOnRef.current) speak(`Heading to ${nextLegLabel}`);
+  };
+
   // Disable "I've Arrived" until the driver is ~300 ft from pickup.
   const arriveLocked = ride.status === "accepted" && !within300ft;
-  const lockControls = ride.status === "in_progress" && remMi > 1;
+  // Hide "Complete Trip" until on the final leg and within 1 mile of drop-off.
+  const lockControls = ride.status === "in_progress" && (isStopLeg || remMi > 1);
   const cancelSecs = ride.accepted_at ? Math.max(0, Math.ceil(240 - (Date.now() / 1000 - ride.accepted_at))) : 240;
   const canCancel = cancelSecs <= 0;
 
@@ -290,7 +326,7 @@ export default function DriverTrip() {
             <Text style={styles.navInstruction} numberOfLines={1}>{navStep.instruction}</Text>
             {navInfo ? (
               <Text style={styles.navMeta}>
-                {ride.status === "in_progress" ? "To destination" : "To pickup"} · {navInfo.distanceText} · {navInfo.durationText} · Arrive {navInfo.arrivalText}
+                {ride.status !== "in_progress" ? "To pickup" : isStopLeg ? `To Stop ${curLeg + 1} of ${stops.length}` : "To destination"} · {navInfo.distanceText} · {navInfo.durationText} · Arrive {navInfo.arrivalText}
               </Text>
             ) : null}
           </View>
@@ -318,13 +354,51 @@ export default function DriverTrip() {
             ) : (
               <>
                 <View style={styles.statusBanner}>
-                  <Text style={styles.statusText}>{STATUS_TEXT[ride.status] || ride.status}</Text>
+                  <Text style={styles.statusText}>
+                    {isStopLeg
+                      ? atStop
+                        ? `At Stop ${curLeg + 1} of ${stops.length}`
+                        : `Going to Stop ${curLeg + 1} of ${stops.length}`
+                      : STATUS_TEXT[ride.status] || ride.status}
+                  </Text>
                   <Text style={styles.fare}>${(ride.final_fare ?? ride.recommended_fare).toFixed(2)}</Text>
                 </View>
-                {step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls || arriveLocked} testID="advance-status" />}
+
+                {ride.airport_info ? (
+                  <View style={styles.airportInfo} testID="dt-airport-info">
+                    <Ionicons name="airplane" size={16} color={colors.brandPrimary} />
+                    <Text style={styles.airportInfoText}>
+                      {ride.airport_info.direction === "from" ? "Airport pickup" : "Airport drop-off"} · {ride.airport_info.airline}
+                      {ride.airport_info.flight_number ? ` · Flight ${ride.airport_info.flight_number}` : ""} · {ride.airport_info.bags} bag{ride.airport_info.bags === 1 ? "" : "s"}
+                    </Text>
+                  </View>
+                ) : null}
+                {stops.length > 0 ? (
+                  <Text style={styles.stopsLine}>{stops.length} stop{stops.length === 1 ? "" : "s"} on this trip</Text>
+                ) : null}
+
+                {isStopLeg && atStop ? (
+                  <View style={styles.stopWaitBox} testID="stop-wait">
+                    <Ionicons name="time" size={18} color={colors.brandPrimary} />
+                    <Text style={styles.stopWaitText}>
+                      Waiting at stop · {Math.floor(stopWaitSecs / 60)}:{String(stopWaitSecs % 60).padStart(2, "0")} {stopWaitSecs > 0 ? "left (max 3 min)" : "— time to go"}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {isStopLeg ? (
+                  atStop ? (
+                    <Button title={`Continue to ${nextLegLabel}`} onPress={goNextStop} testID="continue-stop" />
+                  ) : (
+                    <Text style={styles.lockHint}>En route to Stop {curLeg + 1}{remFt === Infinity ? "" : ` · ${remFt < 5280 ? Math.round(remFt) + " ft" : remMi.toFixed(1) + " mi"} away`}</Text>
+                  )
+                ) : (
+                  step && <Button title={step.label} onPress={advance} loading={busy} disabled={lockControls || arriveLocked} testID="advance-status" />
+                )}
+
                 {arriveLocked ? (
                   <Text style={styles.lockHint}>You can mark arrival within 300 ft of the pickup{remFt === Infinity ? "" : ` · ${remFt < 5280 ? Math.round(remFt) + " ft" : remMi.toFixed(1) + " mi"} away`}</Text>
-                ) : lockControls ? (
+                ) : !isStopLeg && lockControls ? (
                   <Text style={styles.lockHint}>Trip controls unlock within 1 mile of drop-off · {remMi === Infinity ? "" : remMi.toFixed(1) + " mi left"}</Text>
                 ) : null}
               </>
@@ -413,6 +487,11 @@ const styles = StyleSheet.create({
   smallIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
   iconDisabled: { backgroundColor: colors.surfaceSecondary, opacity: 0.6 },
   lockHint: { fontFamily: font.medium, fontSize: 12, color: colors.muted, textAlign: "center", marginTop: spacing.sm },
+  stopWaitBox: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingVertical: spacing.md, marginBottom: spacing.sm },
+  stopWaitText: { fontFamily: font.semibold, fontSize: 13, color: colors.brandPrimary },
+  airportInfo: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+  airportInfoText: { flex: 1, fontFamily: font.semibold, fontSize: 12, color: colors.onSurface },
+  stopsLine: { fontFamily: font.medium, fontSize: 12, color: colors.muted, marginBottom: spacing.sm },
   cancelRow: { alignItems: "center", paddingVertical: spacing.md, marginTop: spacing.xs },
   cancelText: { fontFamily: font.semibold, fontSize: 14, color: colors.error },
   cancelDisabled: { color: colors.muted },
