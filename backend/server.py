@@ -5,6 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import math
+import asyncio
 import random
 import re
 import uuid
@@ -32,6 +33,15 @@ from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout, CheckoutSessionRequest,
 )
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
+
+# --- Card-on-file (own Stripe keys): authorize-on-accept, capture-on-completion ---
+import stripe as stripe_sdk
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+CARD_ON_FILE_ENABLED = (
+    STRIPE_SECRET_KEY.startswith("sk_") and not STRIPE_SECRET_KEY.endswith("emergent")
+)
+if CARD_ON_FILE_ENABLED:
+    stripe_sdk.api_key = STRIPE_SECRET_KEY
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -396,6 +406,8 @@ def build_offers(ride: dict) -> List[dict]:
 async def create_ride(req: RideReq, user=Depends(get_current_user)):
     if user["role"] != "customer":
         raise HTTPException(403, "Only customers can request rides")
+    if CARD_ON_FILE_ENABLED and not user.get("default_payment_method"):
+        raise HTTPException(402, "Please add a payment method before requesting a ride.")
     # Service-area rule: a ride must start OR end within 100 miles of Orlando.
     pu, de = req.pickup.dict(), req.destination.dict()
     if (haversine_miles(pu, ORLANDO) > SERVICE_RADIUS_MILES
@@ -456,6 +468,10 @@ async def select_offer(ride_id: str, req: SelectReq, user=Depends(get_current_us
     if not offer:
         raise HTTPException(404, "Offer not found")
     driver = offer["driver"]
+    # Authorize a hold on the rider's saved card before assigning the driver.
+    auth_pi_id = None
+    if CARD_ON_FILE_ENABLED:
+        auth_pi_id = await authorize_ride_hold(ride, offer["fare"])
     assigned = {
         "id": driver["id"],
         "name": driver["name"],
@@ -474,6 +490,8 @@ async def select_offer(ride_id: str, req: SelectReq, user=Depends(get_current_us
         "selected_offer_id": offer["id"],
         "final_fare": offer["fare"],
         "accepted_at": now_ts(),
+        "payment_intent_id": auth_pi_id,
+        "payment_status": "authorized" if auth_pi_id else "unpaid",
     }})
     ride = await db.rides.find_one({"id": ride_id}, {"_id": 0})
     return {"ride": ride}
@@ -540,6 +558,11 @@ async def track_ride(ride_id: str, user=Depends(get_current_user)):
     track = compute_track(ride)
     if track["status"] != ride["status"]:
         await db.rides.update_one({"id": ride_id}, {"$set": {"status": track["status"]}})
+        ride["status"] = track["status"]
+    # Capture the fare hold (and charge any tip) once the trip completes.
+    if track["status"] == "completed" and CARD_ON_FILE_ENABLED and ride.get("payment_intent_id") and not ride.get("fare_captured"):
+        await capture_ride_payment(ride)
+        ride = await db.rides.find_one({"id": ride_id})
     return {**track, "pickup": ride["pickup"], "destination": ride["destination"],
             "assigned_driver": ride.get("assigned_driver"), "tip": ride.get("tip", 0),
             "final_fare": ride.get("final_fare"), "payment_status": ride.get("payment_status", "unpaid")}
@@ -556,6 +579,15 @@ async def add_tip(ride_id: str, req: TipReq, user=Depends(get_current_user)):
         raise HTTPException(400, "You can tip during the trip or after it's completed.")
     amount = max(0.0, round(float(req.amount), 2))
     await db.rides.update_one({"id": ride_id}, {"$set": {"tip": amount}})
+    # If the trip is already completed, charge the tip immediately (off-session).
+    if CARD_ON_FILE_ENABLED and amount > 0 and ride.get("status") == "completed" and not ride.get("tip_charged"):
+        try:
+            await charge_tip({**ride, "tip": amount}, amount)
+            await db.rides.update_one({"id": ride_id}, {"$set": {"tip_charged": True}})
+            return {"tip": amount, "charged": True}
+        except Exception as e:
+            logger.warning(f"Tip charge failed for {ride_id}: {e}")
+            raise HTTPException(402, "We couldn't charge the tip to your card. Please try again.")
     return {"tip": amount}
 
 
@@ -1171,6 +1203,144 @@ async def stripe_webhook(request: Request):
                 {"$set": {"payment_status": "paid", "paid_amount": txn["amount"], "paid_at": now_ts()}},
             )
     return {"received": True}
+
+
+# --------------------------------------------------------------------------
+# Card on file (own Stripe keys): SetupIntent + authorize-on-accept + capture
+# --------------------------------------------------------------------------
+class SetupCompleteReq(BaseModel):
+    setup_intent_id: str
+
+
+async def get_or_create_stripe_customer(user: dict) -> str:
+    if user.get("stripe_customer_id"):
+        return user["stripe_customer_id"]
+    cust = await asyncio.to_thread(
+        lambda: stripe_sdk.Customer.create(
+            email=user.get("email"), name=user.get("name"),
+            metadata={"user_id": user["id"]},
+        )
+    )
+    await db.users.update_one({"id": user["id"]}, {"$set": {"stripe_customer_id": cust.id}})
+    return cust.id
+
+
+@api_router.get("/payments/method")
+async def get_payment_method(user=Depends(get_current_user)):
+    return {
+        "enabled": CARD_ON_FILE_ENABLED,
+        "has_card": bool(user.get("default_payment_method")),
+        "brand": user.get("card_brand"),
+        "last4": user.get("card_last4"),
+    }
+
+
+@api_router.post("/payments/setup-intent")
+async def create_setup_intent(user=Depends(get_current_user)):
+    if not CARD_ON_FILE_ENABLED:
+        raise HTTPException(400, "Card payments are not configured yet.")
+    customer_id = await get_or_create_stripe_customer(user)
+    si = await asyncio.to_thread(
+        lambda: stripe_sdk.SetupIntent.create(
+            customer=customer_id, payment_method_types=["card"], usage="off_session",
+            metadata={"user_id": user["id"]},
+        )
+    )
+    return {"client_secret": si.client_secret, "customer_id": customer_id}
+
+
+@api_router.post("/payments/setup-complete")
+async def complete_setup(req: SetupCompleteReq, user=Depends(get_current_user)):
+    if not CARD_ON_FILE_ENABLED:
+        raise HTTPException(400, "Card payments are not configured yet.")
+    si = await asyncio.to_thread(lambda: stripe_sdk.SetupIntent.retrieve(req.setup_intent_id))
+    pm_id = si.payment_method
+    if not pm_id:
+        raise HTTPException(400, "No card was saved. Please try again.")
+    customer_id = si.customer or await get_or_create_stripe_customer(user)
+    pm = await asyncio.to_thread(lambda: stripe_sdk.PaymentMethod.retrieve(pm_id))
+    card = getattr(pm, "card", None)
+    brand = card.brand if card else None
+    last4 = card.last4 if card else None
+    await asyncio.to_thread(
+        lambda: stripe_sdk.Customer.modify(
+            customer_id, invoice_settings={"default_payment_method": pm_id}
+        )
+    )
+    await db.users.update_one({"id": user["id"]}, {"$set": {
+        "stripe_customer_id": customer_id,
+        "default_payment_method": pm_id,
+        "card_brand": brand,
+        "card_last4": last4,
+    }})
+    return {"has_card": True, "brand": brand, "last4": last4}
+
+
+async def authorize_ride_hold(ride: dict, fare: float):
+    """Place an off-session manual-capture hold for `fare` on the rider's card."""
+    customer = await db.users.find_one({"id": ride["customer_id"]})
+    pm = (customer or {}).get("default_payment_method")
+    cust_id = (customer or {}).get("stripe_customer_id")
+    if not pm or not cust_id:
+        raise HTTPException(402, "Please add a payment method before accepting an offer.")
+    amount_cents = int(round(float(fare) * 100))
+    try:
+        pi = await asyncio.to_thread(
+            lambda: stripe_sdk.PaymentIntent.create(
+                amount=amount_cents, currency="usd", customer=cust_id, payment_method=pm,
+                confirm=True, off_session=True, capture_method="manual",
+                metadata={"ride_id": ride["id"], "kind": "ride_authorization"},
+            )
+        )
+    except Exception as e:
+        raise HTTPException(402, "Your card was declined or could not be authorized. Please update your payment method.")
+    if pi.status != "requires_capture":
+        raise HTTPException(402, "Card authorization failed. Please use a different card.")
+    return pi.id
+
+
+async def capture_ride_payment(ride: dict):
+    """Capture the fare hold and charge any tip once the trip is completed (idempotent)."""
+    if not CARD_ON_FILE_ENABLED:
+        return
+    ride_id = ride["id"]
+    updates: dict = {}
+    pi_id = ride.get("payment_intent_id")
+    if pi_id and not ride.get("fare_captured"):
+        try:
+            pi = await asyncio.to_thread(lambda: stripe_sdk.PaymentIntent.capture(pi_id))
+            updates["fare_captured"] = True
+            updates["payment_status"] = "paid"
+            updates["captured_amount"] = (getattr(pi, "amount_received", 0) or 0) / 100
+            updates["paid_at"] = now_ts()
+        except Exception as e:
+            logger.warning(f"Fare capture failed for {ride_id}: {e}")
+    tip = float(ride.get("tip", 0) or 0)
+    if tip > 0 and not ride.get("tip_charged"):
+        try:
+            await charge_tip(ride, tip)
+            updates["tip_charged"] = True
+        except Exception as e:
+            logger.warning(f"Tip charge failed for {ride_id}: {e}")
+    if updates:
+        await db.rides.update_one({"id": ride_id}, {"$set": updates})
+
+
+async def charge_tip(ride: dict, amount: float):
+    customer = await db.users.find_one({"id": ride["customer_id"]})
+    pm = (customer or {}).get("default_payment_method")
+    cust_id = (customer or {}).get("stripe_customer_id")
+    if not pm or not cust_id:
+        raise HTTPException(402, "No saved card to charge the tip.")
+    tip_pi = await asyncio.to_thread(
+        lambda: stripe_sdk.PaymentIntent.create(
+            amount=int(round(amount * 100)), currency="usd", customer=cust_id,
+            payment_method=pm, confirm=True, off_session=True,
+            metadata={"ride_id": ride["id"], "kind": "tip"},
+        )
+    )
+    await db.rides.update_one({"id": ride["id"]}, {"$set": {"tip_payment_intent_id": tip_pi.id}})
+    return tip_pi.id
 
 
 app.include_router(api_router)

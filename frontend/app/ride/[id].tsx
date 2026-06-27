@@ -31,6 +31,8 @@ const STATUS_TEXT: Record<string, string> = {
   completed: "You've arrived!",
 };
 
+const STRIPE_CARD_FLOW = !!process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+
 function milesBetween(a?: { lat: number; lng: number }, b?: { lat: number; lng: number }): number | null {
   if (!a || !b) return null;
   const R = 3958.8;
@@ -55,6 +57,7 @@ export default function RideScreen() {
   const [track, setTrack] = useState<any>(null);
   const [status, setStatus] = useState<string>("searching");
   const [selecting, setSelecting] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
   const statusRef = useRef(status);
   statusRef.current = status;
   const spokenRef = useRef<string | null>(null);
@@ -103,13 +106,15 @@ export default function RideScreen() {
 
   const accept = async (offer: any) => {
     setSelecting(offer.id);
+    setAcceptError(null);
     unlockSpeech();
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       const r: any = await api(`/rides/${id}/select`, { method: "POST", body: { offer_id: offer.id } });
       setRide(r.ride);
       setStatus(r.ride.status);
-    } catch {
+    } catch (e: any) {
+      setAcceptError(e?.message || "Could not confirm this offer. Please try again.");
       setSelecting(null);
     }
   };
@@ -120,14 +125,18 @@ export default function RideScreen() {
   };
 
   const [tipState, setTipState] = useState<number | null>(null);
+  const [tipFeedback, setTipFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const tip = tipState ?? track?.tip ?? 0;
   const addTip = async (amount: number) => {
     setTipState(amount);
+    setTipFeedback(null);
     Haptics.selectionAsync().catch(() => {});
     try {
-      await api(`/rides/${id}/tip`, { method: "POST", body: { amount } });
-    } catch {
+      const r: any = await api(`/rides/${id}/tip`, { method: "POST", body: { amount } });
+      if (r?.charged) setTipFeedback({ ok: true, msg: `Tip of $${amount.toFixed(2)} charged to your card.` });
+    } catch (e: any) {
       setTipState(null);
+      setTipFeedback({ ok: false, msg: e?.message || "Could not charge the tip. Please try again." });
     }
   };
 
@@ -150,6 +159,7 @@ export default function RideScreen() {
         stops={ride.stops}
         driver={isSearching ? null : driverLoc}
         enrouteFrom={isSearching ? null : ride.assigned_driver?.start}
+        focusPoint={status === "arrived" ? (driverLoc || ride.pickup) : null}
         style={StyleSheet.absoluteFill}
       />
 
@@ -163,11 +173,12 @@ export default function RideScreen() {
           offers={offers}
           onAccept={accept}
           selecting={selecting}
+          acceptError={acceptError}
           onCancel={cancel}
           insets={insets}
         />
       ) : status === "completed" ? (
-        <CompletedSheet ride={ride} track={track} insets={insets} tip={tip} onTip={addTip} rideId={id!} />
+        <CompletedSheet ride={ride} track={track} insets={insets} tip={tip} onTip={addTip} tipFeedback={tipFeedback} rideId={id!} />
       ) : (
         <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} />
       )}
@@ -175,7 +186,7 @@ export default function RideScreen() {
   );
 }
 
-function SearchingSheet({ ride, offers, onAccept, selecting, onCancel, insets }: any) {
+function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCancel, insets }: any) {
   return (
     <View style={[styles.sheet, { maxHeight: "68%", paddingBottom: insets.bottom + spacing.md }]}>
       <View style={styles.handle} />
@@ -194,6 +205,13 @@ function SearchingSheet({ ride, offers, onAccept, selecting, onCancel, insets }:
       </View>
 
       <Text style={styles.compareTitle}>Compare driver offers</Text>
+
+      {acceptError ? (
+        <View style={styles.acceptErrorBox} testID="accept-error">
+          <Ionicons name="alert-circle" size={16} color={colors.error} />
+          <Text style={styles.acceptErrorText}>{acceptError}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.routeBox}>
         <View style={styles.routeCol}>
@@ -374,7 +392,7 @@ function TipSection({ tip, onTip }: any) {
   );
 }
 
-function CompletedSheet({ ride, track, insets, tip, onTip, rideId }: any) {
+function CompletedSheet({ ride, track, insets, tip, onTip, tipFeedback, rideId }: any) {
   const fare = track?.final_fare ?? ride.final_fare ?? ride.recommended_fare;
   const paid = track?.payment_status === "paid";
   const total = fare + Number(tip || 0);
@@ -414,21 +432,32 @@ function CompletedSheet({ ride, track, insets, tip, onTip, rideId }: any) {
       {tip > 0 ? <Text style={styles.completeTip}>+ ${Number(tip).toFixed(2)} tip · Total ${total.toFixed(2)}</Text> : null}
       <Text style={styles.completeSub}>{ride.pickup.label} → {ride.destination.label}</Text>
 
-      {paid ? (
-        <View style={styles.paidBox} testID="payment-paid">
-          <Ionicons name="card" size={18} color={colors.success} />
-          <Text style={styles.paidText}>Paid ${(track?.paid_amount ?? total).toFixed(2)}</Text>
-        </View>
-      ) : (
-        <TipSection tip={tip} onTip={onTip} />
-      )}
-
-      {payErr ? <Text style={styles.payErr}>{payErr}</Text> : null}
-
-      {paid ? (
-        <Button title="Done" onPress={() => router.replace("/(customer)")} testID="trip-done" style={{ marginTop: spacing.lg }} />
+      {STRIPE_CARD_FLOW ? (
+        <>
+          <View style={[styles.paidBox, !paid && { backgroundColor: colors.surfaceSecondary }]} testID="payment-paid">
+            <Ionicons name={paid ? "card" : "time"} size={18} color={paid ? colors.success : colors.muted} />
+            <Text style={[styles.paidText, !paid && { color: colors.muted }]}>
+              {paid ? `Charged $${fare.toFixed(2)} to your card on file` : "Finalizing fare charge…"}
+            </Text>
+          </View>
+          <TipSection tip={tip} onTip={onTip} />
+          {tipFeedback ? (
+            <Text style={tipFeedback.ok ? styles.tipOk : styles.payErr}>{tipFeedback.msg}</Text>
+          ) : null}
+          <Button title="Done" onPress={() => router.replace("/(customer)")} testID="trip-done" style={{ marginTop: spacing.lg }} />
+        </>
+      ) : paid ? (
+        <>
+          <View style={styles.paidBox} testID="payment-paid">
+            <Ionicons name="card" size={18} color={colors.success} />
+            <Text style={styles.paidText}>Paid ${(track?.paid_amount ?? total).toFixed(2)}</Text>
+          </View>
+          <Button title="Done" onPress={() => router.replace("/(customer)")} testID="trip-done" style={{ marginTop: spacing.lg }} />
+        </>
       ) : (
         <>
+          <TipSection tip={tip} onTip={onTip} />
+          {payErr ? <Text style={styles.payErr}>{payErr}</Text> : null}
           <Button
             title={`Pay $${total.toFixed(2)}`}
             onPress={pay}
@@ -553,6 +582,9 @@ const styles = StyleSheet.create({
   tipSkip: { fontFamily: font.medium, fontSize: 13, color: colors.muted, textAlign: "center", marginTop: spacing.md },
   paidBox: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: spacing.lg, backgroundColor: "#ecfdf5", borderRadius: radius.md, paddingVertical: spacing.md },
   paidText: { fontFamily: font.bold, fontSize: 15, color: colors.success },
+  tipOk: { fontFamily: font.semibold, fontSize: 13, color: colors.success, textAlign: "center", marginTop: spacing.md },
+  acceptErrorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fef2f2", borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+  acceptErrorText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.error },
   payErr: { fontFamily: font.medium, fontSize: 13, color: colors.error, textAlign: "center", marginTop: spacing.md },
   payLater: { fontFamily: font.medium, fontSize: 13, color: colors.muted, textAlign: "center", marginTop: spacing.md },
 });

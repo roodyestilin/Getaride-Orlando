@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import MapView, { LatLng } from "@/src/components/MapView";
@@ -27,6 +27,17 @@ export default function CustomerHome() {
   const [picker, setPicker] = useState<null | "pickup" | "destination" | "stop">(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needCard, setNeedCard] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      api("/payments/method")
+        .then((m: any) => { if (active) setNeedCard(!!m.enabled && !m.has_card); })
+        .catch(() => {});
+      return () => { active = false; };
+    }, [])
+  );
 
   const onSelectPlace = (p: LatLng) => {
     setError(null);
@@ -211,6 +222,14 @@ export default function CustomerHome() {
           <Text style={styles.addStopText}>Add stop</Text>
         </Pressable>
 
+        {needCard ? (
+          <Pressable testID="add-card-banner" onPress={() => router.push("/payment-methods")} style={styles.cardBanner}>
+            <Ionicons name="card-outline" size={18} color={colors.brandPrimary} />
+            <Text style={styles.cardBannerText}>Add a payment method to request rides</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.brandPrimary} />
+          </Pressable>
+        ) : null}
+
         {error ? (
           <View style={styles.errorBox} testID="ride-error">
             <Ionicons name="alert-circle" size={16} color={colors.error} />
@@ -219,9 +238,9 @@ export default function CustomerHome() {
         ) : null}
 
         <Button
-          title={mode === "now" ? "Find Rides" : "Schedule Ride"}
-          onPress={findRides}
-          disabled={!destination}
+          title={needCard ? "Add payment method" : mode === "now" ? "Find Rides" : "Schedule Ride"}
+          onPress={needCard ? () => router.push("/payment-methods") : findRides}
+          disabled={!needCard && !destination}
           loading={loading}
           testID="find-rides"
         />
@@ -324,4 +343,6 @@ const styles = StyleSheet.create({
   addStopText: { fontFamily: font.semibold, fontSize: 14, color: colors.brandPrimary },
   errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fef2f2", borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   errorText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.error },
+  cardBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
+  cardBannerText: { flex: 1, fontFamily: font.semibold, fontSize: 13, color: colors.brandPrimary },
 });

@@ -1,7 +1,8 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
 import { useAuth } from "@/src/auth";
@@ -49,6 +50,16 @@ export default function AccountScreen() {
         ))}
       </View>
 
+      {user.role === "customer" ? (
+        <Pressable testID="account-payment-methods" onPress={() => router.push("/payment-methods")} style={styles.linkRow}>
+          <View style={styles.rowIcon}>
+            <Ionicons name="card" size={18} color={colors.brandPrimary} />
+          </View>
+          <Text style={styles.linkLabel}>Payment methods</Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Pressable>
+      ) : null}
+
       <Button title="Sign Out" variant="secondary" onPress={signOut} testID="sign-out" style={{ marginTop: spacing.xl }} />
       <Text style={styles.version}>Getaride Orlando · v1.0</Text>
     </ScrollView>
@@ -67,5 +78,7 @@ const styles = StyleSheet.create({
   rowLabel: { fontFamily: font.medium, fontSize: 14, color: colors.onSurfaceSecondary },
   rowValue: { flex: 1, textAlign: "right", fontFamily: font.semibold, fontSize: 14, color: colors.onSurface },
   divider: { height: 1, backgroundColor: colors.border },
+  linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
+  linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
   version: { textAlign: "center", marginTop: spacing.xl, fontFamily: font.regular, fontSize: 12, color: colors.muted },
 });
