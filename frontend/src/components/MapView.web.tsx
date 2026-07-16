@@ -51,11 +51,11 @@ function makeDriverEl(): HTMLDivElement {
 function makeNavArrowEl(): HTMLDivElement {
   const el = document.createElement("div");
   el.style.cssText =
-    `width:40px;height:40px;border-radius:20px;background:${colors.brandPrimary};` +
+    `width:30px;height:30px;border-radius:15px;background:${colors.brandPrimary};` +
     `border:3px solid #fff;display:flex;align-items:center;justify-content:center;` +
     `box-shadow:0 3px 12px rgba(0,0,0,.45);`;
   el.innerHTML =
-    `<svg width="20" height="20" viewBox="0 0 512 512" fill="#fff">` +
+    `<svg width="15" height="15" viewBox="0 0 512 512" fill="#fff">` +
     `<path d="M256 40 L456 472 L256 384 L56 472 Z"/></svg>`;
   return el;
 }
