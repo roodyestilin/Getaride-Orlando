@@ -17,6 +17,7 @@ type Props = {
   destination?: LatLng | null;
   driver?: LatLng | null;
   focusPoint?: LatLng | null;
+  bottomInset?: number;
   enrouteFrom?: LatLng | null;
   navFrom?: LatLng | null;
   navTo?: LatLng | null;
@@ -165,7 +166,7 @@ function arrivalTime(durationSec: number): string {
 }
 
 
-export default function MapView({ pickup, pulsePickup, destination, driver, focusPoint, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
+export default function MapView({ pickup, pulsePickup, destination, driver, focusPoint, bottomInset = 0, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -358,7 +359,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     if (navMode && followRef.current) return;
     // Street-level focus (e.g. driver waiting at pickup): keep zoomed in on one point.
     if (focusPoint && !navMode) {
-      map.easeTo({ center: [focusPoint.lng, focusPoint.lat], zoom: 15.6, duration: 600 });
+      map.easeTo({ center: [focusPoint.lng, focusPoint.lat], zoom: 15.6, padding: { top: 40, bottom: 40 + bottomInset, left: 40, right: 40 }, duration: 600 });
       return;
     }
     const pts: LatLng[] = [];
@@ -373,12 +374,12 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     }
     if (pts.length === 0) return;
     if (pts.length === 1) {
-      map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 15.5, duration: 500 });
+      map.easeTo({ center: [pts[0].lng, pts[0].lat], zoom: 15.5, padding: { top: 40, bottom: 40 + bottomInset, left: 40, right: 40 }, duration: 500 });
       return;
     }
     const b = new mapboxgl.LngLatBounds();
     pts.forEach((p) => b.extend([p.lng, p.lat]));
-    map.fitBounds(b, { padding: { top: 150, bottom: 320, left: 56, right: 56 }, maxZoom: 15, duration: 600 });
+    map.fitBounds(b, { padding: { top: 150, bottom: 320 + bottomInset, left: 56, right: 56 }, maxZoom: 15, duration: 600 });
   };
 
   const updateAll = () => {

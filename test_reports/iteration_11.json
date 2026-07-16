@@ -1,0 +1,29 @@
+{
+  "summary": "Customer home UI/layout bug-fix verification (frontend only). Both reported issues are FIXED and all regressions pass. Verified on mobile viewport 390x844 as rider@getaride.com.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verifications": [
+    "Pickup pin visible above sheet: the green mapbox marker renders at top=145px while the bottom sheet ('Where to?') begins at top=463px on a 844px viewport — pin sits fully inside the visible map area (bottomInset=winH*0.5 camera padding is working).",
+    "Find Rides button fully visible: bounding box y=714, height=54 => bottom=768 which is above the 844 viewport bottom and above the tab bar; not clipped.",
+    "Address rows compact: pickup-row and destination-row both render at height=46 with the smaller font as intended; sheet stays inside its 60% maxHeight (317px tall).",
+    "Regression normal ride: selected Disney Springs via destination-row picker, tapped Find Rides, navigated to /ride/{id} and offers screen loaded (3/5 offers visible).",
+    "Regression airport flow: selected 'Orlando Intl Airport' as destination -> airport-card appears (visible bbox y=641); tapping opens multi-step modal, airline-select is present, and flight-input is correctly hidden for to-airport direction; airport-continue button visible."
+  ],
+  "test_report_links": ["/tmp/customer_home.png", "/tmp/after_dest.png", "/tmp/after_findrides.png", "/tmp/airport_modal.png"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Non-blocking: (customer)/index.tsx is 555 lines — consider extracting AirportDetailsModal and styles into separate files to stay under 700 lines.",
+    "Non-blocking: console warnings observed: 'shadow*' style props deprecated (use boxShadow), props.pointerEvents deprecated (use style.pointerEvents), Image style.resizeMode deprecated. These come from theme/shadow and Button components. Not a functional bug."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "None; used seeded rider@getaride.com credentials.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login route is /auth (not /login). Use testID email-input / password-input and click text 'Sign In'. Customer home 'Where to?' sheet lives inside a scroll view with maxHeight 60% of viewport; MapView receives bottomInset=winH*0.5 which pushes the pin up. mapboxgl marker DOM uses .mapboxgl-marker class."
+}

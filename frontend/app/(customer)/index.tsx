@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TextInput, Modal } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TextInput, Modal, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,7 @@ const AIRLINES = [
 
 export default function CustomerHome() {
   const insets = useSafeAreaInsets();
+  const { height: winH } = useWindowDimensions();
   const [pickup, setPickup] = useState<LatLng>(DEFAULT_PICKUP);
   const [destination, setDestination] = useState<LatLng | null>(null);
   const [stops, setStops] = useState<LatLng[]>([]);
@@ -184,7 +185,7 @@ export default function CustomerHome() {
 
   return (
     <View style={styles.container}>
-      <MapView pickup={pickup} destination={destination} stops={stops} onPickupChange={onPickupChange} autoFit style={StyleSheet.absoluteFill} />
+      <MapView pickup={pickup} destination={destination} stops={stops} onPickupChange={onPickupChange} bottomInset={winH * 0.5} autoFit style={StyleSheet.absoluteFill} />
 
       <BlurView intensity={40} tint="light" style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="home-profile" onPress={() => router.push("/(customer)/account")} style={styles.profileBtn}>
@@ -514,14 +515,14 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: font.medium, fontSize: 13, color: colors.muted },
   chipTextActive: { color: colors.brandPrimary },
   inputCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.lg },
-  locRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 54 },
-  locText: { flex: 1, fontFamily: font.medium, fontSize: 15, color: colors.onSurface },
+  locRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 46 },
+  locText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.onSurface },
   locPlaceholder: { color: colors.muted, fontFamily: font.regular },
   divider: { height: 1, backgroundColor: colors.border, marginLeft: 26 },
-  addStop: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.md },
-  pinHint: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: spacing.sm },
-  pinHintText: { fontFamily: font.regular, fontSize: 12, color: colors.muted },
-  addStopText: { fontFamily: font.semibold, fontSize: 14, color: colors.brandPrimary },
+  addStop: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.sm },
+  pinHint: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: spacing.xs },
+  pinHintText: { fontFamily: font.regular, fontSize: 11, color: colors.muted },
+  addStopText: { fontFamily: font.semibold, fontSize: 13, color: colors.brandPrimary },
   errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fef2f2", borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   errorText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.error },
   cardBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
