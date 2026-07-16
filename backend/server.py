@@ -687,9 +687,7 @@ async def driver_online(req: StatusReq, user=Depends(get_current_user)):
         })
         if active:
             raise HTTPException(400, "Finish your active trip before going offline.")
-    await db.users.update_one({"id": user["id"]}, {"$set": {"online": online}})
-    if online:
-        await ensure_driver_requests()
+    await db.users.update_one({"id": user["id"]}, {"$set": {"online": online, "online_at": now_ts() if online else None}})
     return {"online": online}
 
 
@@ -697,6 +695,10 @@ async def driver_online(req: StatusReq, user=Depends(get_current_user)):
 async def driver_requests(user=Depends(get_current_user)):
     if user["role"] != "driver":
         raise HTTPException(403, "Driver only")
+    # Give drivers a brief buffer after going online before requests start flowing.
+    online_at = user.get("online_at")
+    if online_at and (now_ts() - online_at) < 5:
+        return {"requests": [], "warming_up": True}
     await ensure_driver_requests()
     cursor = db.rides.find({"source": "sim", "status": "searching", "driver_bid": None},
                            {"_id": 0}).sort("created_at", -1)
