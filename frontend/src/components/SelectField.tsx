@@ -31,7 +31,7 @@ export default function SelectField({ label, value, options, placeholder, disabl
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
       <Pressable
         testID={testID}
         disabled={disabled}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TextInput } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TextInput, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -39,6 +39,8 @@ export default function CustomerHome() {
   const [airline, setAirline] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
   const [bags, setBags] = useState(1);
+  const [airportModal, setAirportModal] = useState(false);
+  const [airportStep, setAirportStep] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -268,47 +270,22 @@ export default function CustomerHome() {
         </Pressable>
 
         {isAirportTrip ? (
-          <View style={styles.airportCard} testID="airport-card">
-            <View style={styles.airportHeader}>
-              <Ionicons name="airplane" size={16} color={colors.brandPrimary} />
-              <Text style={styles.airportTitle}>{fromAirport ? "Airport pickup details" : "Airport drop-off details"}</Text>
+          <Pressable
+            testID="airport-card"
+            onPress={() => { setAirportStep(0); setAirportModal(true); }}
+            style={styles.airportSummary}
+          >
+            <Ionicons name="airplane" size={18} color={colors.brandPrimary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.airportSummaryTitle}>{fromAirport ? "Airport pickup details" : "Airport drop-off details"}</Text>
+              <Text style={styles.airportSummarySub}>
+                {airportReady
+                  ? `${airline}${flightNumber ? ` · ${flightNumber}` : ""} · ${bags} bag${bags === 1 ? "" : "s"}`
+                  : "Tap to add flight & bag details"}
+              </Text>
             </View>
-
-            {fromAirport ? (
-              <View style={{ marginBottom: spacing.md }}>
-                <Text style={styles.airportLabel}>Arrival flight number</Text>
-                <TextInput
-                  testID="flight-input"
-                  style={styles.airportInput}
-                  placeholder="e.g. AA1234"
-                  placeholderTextColor={colors.muted}
-                  autoCapitalize="characters"
-                  value={flightNumber}
-                  onChangeText={(t) => { setFlightNumber(t); setError(null); }}
-                />
-              </View>
-            ) : null}
-
-            <SelectField
-              label="Airline"
-              testID="airline-select"
-              value={airline}
-              options={AIRLINES}
-              placeholder="Select airline"
-              onSelect={(v: string) => { setAirline(v); setError(null); }}
-            />
-
-            <Text style={[styles.airportLabel, { marginTop: spacing.md }]}>Number of bags</Text>
-            <View style={styles.bagsRow}>
-              <Pressable testID="bags-minus" onPress={() => setBags((b) => Math.max(0, b - 1))} style={styles.bagsBtn}>
-                <Ionicons name="remove" size={20} color={colors.onSurface} />
-              </Pressable>
-              <Text style={styles.bagsCount} testID="bags-count">{bags}</Text>
-              <Pressable testID="bags-plus" onPress={() => setBags((b) => Math.min(20, b + 1))} style={styles.bagsBtn}>
-                <Ionicons name="add" size={20} color={colors.onSurface} />
-              </Pressable>
-            </View>
-          </View>
+            <Ionicons name={airportReady ? "checkmark-circle" : "chevron-forward"} size={20} color={airportReady ? colors.success : colors.muted} />
+          </Pressable>
         ) : null}
 
         {needCard ? (
@@ -327,14 +304,38 @@ export default function CustomerHome() {
         ) : null}
 
         <Button
-          title={needCard ? "Add payment method" : mode === "now" ? "Find Rides" : "Schedule Ride"}
-          onPress={needCard ? () => router.push("/payment-methods") : findRides}
+          title={
+            needCard ? "Add payment method"
+              : isAirportTrip && !airportReady ? "Add airport details"
+              : mode === "now" ? "Find Rides" : "Schedule Ride"
+          }
+          onPress={
+            needCard ? () => router.push("/payment-methods")
+              : isAirportTrip && !airportReady ? () => { setAirportStep(0); setAirportModal(true); }
+              : findRides
+          }
           disabled={!needCard && !destination}
           loading={loading}
           testID="find-rides"
         />
         </ScrollView>
       </View>
+
+      <AirportDetailsModal
+        visible={airportModal}
+        fromAirport={fromAirport}
+        step={airportStep}
+        setStep={setAirportStep}
+        airline={airline}
+        setAirline={setAirline}
+        flightNumber={flightNumber}
+        setFlightNumber={setFlightNumber}
+        bags={bags}
+        setBags={setBags}
+        onClose={() => setAirportModal(false)}
+        onSubmit={() => { setAirportModal(false); findRides(); }}
+        insets={insets}
+      />
 
       <PlacePicker
         visible={picker !== null}
@@ -366,6 +367,95 @@ function LocationRow({ icon, iconColor, label, onPress, placeholder, trailing, t
     </Pressable>
   );
 }
+
+function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, setAirline, flightNumber, setFlightNumber, bags, setBags, onClose, onSubmit, insets }: any) {
+  const steps: string[] = fromAirport ? ["flight", "airline", "bags"] : ["airline", "bags"];
+  const key = steps[Math.min(step, steps.length - 1)];
+  const isLast = step === steps.length - 1;
+  const valid =
+    key === "flight" ? flightNumber.trim().length >= 2 :
+    key === "airline" ? !!airline :
+    true;
+
+  const titles: Record<string, string> = {
+    flight: "Arrival flight number",
+    airline: "Which airline?",
+    bags: "How many bags?",
+  };
+  const subtitles: Record<string, string> = {
+    flight: "We'll share this with your driver so they can track your arrival.",
+    airline: "Helps your driver find the right terminal.",
+    bags: "So your driver brings enough trunk space.",
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      <View style={[styles.modalWrap, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }]}>
+        <View style={styles.modalHeader}>
+          <Pressable testID="airport-back" onPress={() => (step > 0 ? setStep((s: number) => s - 1) : onClose())} style={styles.modalBack}>
+            <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
+          </Pressable>
+          <View style={styles.stepDots}>
+            {steps.map((s, i) => (
+              <View key={s} style={[styles.stepDot, i === step && styles.stepDotActive]} />
+            ))}
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.modalBody}>
+          <View style={styles.modalIcon}>
+            <Ionicons name="airplane" size={26} color={colors.brandPrimary} />
+          </View>
+          <Text style={styles.modalTitle}>{titles[key]}</Text>
+          <Text style={styles.modalSub}>{subtitles[key]}</Text>
+
+          {key === "flight" ? (
+            <TextInput
+              testID="flight-input"
+              style={styles.modalInput}
+              placeholder="e.g. AA1234"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="characters"
+              autoFocus
+              value={flightNumber}
+              onChangeText={setFlightNumber}
+            />
+          ) : key === "airline" ? (
+            <View style={{ zIndex: 10 }}>
+              <SelectField
+                label=""
+                testID="airline-select"
+                value={airline}
+                options={AIRLINES}
+                placeholder="Select airline"
+                onSelect={setAirline}
+              />
+            </View>
+          ) : (
+            <View style={styles.modalBagsRow}>
+              <Pressable testID="bags-minus" onPress={() => setBags((b: number) => Math.max(0, b - 1))} style={styles.bagsBtn}>
+                <Ionicons name="remove" size={22} color={colors.onSurface} />
+              </Pressable>
+              <Text style={styles.modalBagsCount} testID="bags-count">{bags}</Text>
+              <Pressable testID="bags-plus" onPress={() => setBags((b: number) => Math.min(20, b + 1))} style={styles.bagsBtn}>
+                <Ionicons name="add" size={22} color={colors.onSurface} />
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        <Button
+          title={isLast ? "Find Rides" : "Continue"}
+          onPress={() => (isLast ? onSubmit() : setStep((s: number) => s + 1))}
+          disabled={!valid}
+          testID="airport-continue"
+        />
+      </View>
+    </Modal>
+  );
+}
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#eef1f4" },
@@ -436,6 +526,22 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.error },
   cardBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   cardBannerText: { flex: 1, fontFamily: font.semibold, fontSize: 13, color: colors.brandPrimary },
+  airportSummary: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
+  airportSummaryTitle: { fontFamily: font.bold, fontSize: 14, color: colors.onSurface },
+  airportSummarySub: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  modalWrap: { flex: 1, backgroundColor: colors.surface, paddingHorizontal: spacing.xl },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing["2xl"] },
+  modalBack: { width: 40, height: 40, alignItems: "flex-start", justifyContent: "center" },
+  stepDots: { flexDirection: "row", gap: 6 },
+  stepDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.surfaceTertiary },
+  stepDotActive: { backgroundColor: colors.brandPrimary, width: 22 },
+  modalBody: { flex: 1 },
+  modalIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center", marginBottom: spacing.lg },
+  modalTitle: { fontFamily: font.bold, fontSize: 24, color: colors.onSurface, marginBottom: spacing.sm },
+  modalSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, marginBottom: spacing.xl, lineHeight: 20 },
+  modalInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.lg, height: 56, fontFamily: font.semibold, fontSize: 18, color: colors.onSurface, backgroundColor: colors.surface },
+  modalBagsRow: { flexDirection: "row", alignItems: "center", gap: spacing.xl },
+  modalBagsCount: { fontFamily: font.bold, fontSize: 28, color: colors.onSurface, minWidth: 40, textAlign: "center" },
   airportCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.md },
   airportHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.md },
   airportTitle: { fontFamily: font.bold, fontSize: 14, color: colors.onSurface },
