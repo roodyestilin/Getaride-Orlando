@@ -341,8 +341,8 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
       if (!coords || !mapRef.current) return;
       routeRef.current = coords;
       map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
-      map.addLayer({ id: "route-bg", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": navMode ? 10 : 8 } });
-      map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": navMode ? "#1d4ed8" : colors.brandPrimary, "line-width": navMode ? 6 : 5 } });
+      map.addLayer({ id: "route-bg", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": navMode ? 14 : 8 } });
+      map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": colors.brandPrimary, "line-width": navMode ? 10 : 5 } });
       if (navMode) {
         const steps = (route.legs || []).flatMap((l: any) => l.steps || []);
         startNavAnimation(coords, steps, route.distance || 0, route.duration || 0);
