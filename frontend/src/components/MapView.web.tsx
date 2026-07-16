@@ -39,11 +39,11 @@ const ORLANDO: LatLng = { lat: 28.5384, lng: -81.3789 };
 function makeDriverEl(): HTMLDivElement {
   const el = document.createElement("div");
   el.style.cssText =
-    `width:38px;height:38px;border-radius:19px;background:${colors.brandPrimary};` +
+    `width:30px;height:30px;border-radius:15px;background:${colors.brandPrimary};` +
     `border:3px solid #fff;display:flex;align-items:center;justify-content:center;` +
     `box-shadow:0 3px 10px rgba(0,0,0,.4);`;
   el.innerHTML =
-    `<svg width="19" height="19" viewBox="0 0 512 512" fill="#fff">` +
+    `<svg width="15" height="15" viewBox="0 0 512 512" fill="#fff">` +
     `<path d="M135.2 117.4 109.1 192H402.9l-26.1-74.6C372.3 104.6 360.2 96 346.6 96H165.4c-13.6 0-25.7 8.6-30.2 21.4zM39.6 196.8 74.8 96.3C88.3 57.8 124.6 32 165.4 32H346.6c40.8 0 77.1 25.8 90.6 64.3l35.2 100.5c23.2 9.6 39.6 32.5 39.6 59.2V400v48c0 17.7-14.3 32-32 32H448c-17.7 0-32-14.3-32-32V400H96v48c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32V400 256c0-26.7 16.4-49.6 39.6-59.2zM128 288a32 32 0 1 0 -64 0 32 32 0 1 0 64 0zm288 32a32 32 0 1 0 0-64 32 32 0 1 0 0 64z"/></svg>`;
   return el;
 }
