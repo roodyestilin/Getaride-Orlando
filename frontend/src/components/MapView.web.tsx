@@ -48,6 +48,18 @@ function makeDriverEl(): HTMLDivElement {
   return el;
 }
 
+function makeNavArrowEl(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.cssText =
+    `width:40px;height:40px;border-radius:20px;background:${colors.brandPrimary};` +
+    `border:3px solid #fff;display:flex;align-items:center;justify-content:center;` +
+    `box-shadow:0 3px 12px rgba(0,0,0,.45);`;
+  el.innerHTML =
+    `<svg width="20" height="20" viewBox="0 0 512 512" fill="#fff">` +
+    `<path d="M256 40 L456 472 L256 384 L56 472 Z"/></svg>`;
+  return el;
+}
+
 function ensurePulseStyle() {
   if (typeof document === "undefined" || document.getElementById("gar-pulse-style")) return;
   const s = document.createElement("style");
@@ -233,7 +245,8 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     farSetRef.current = new Set();
     nearSetRef.current = new Set();
     arrivedRef.current = false;
-    if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat(coords[0] as any).addTo(map);
+    if (driverM.current) { driverM.current.remove(); driverM.current = null; }
+    driverM.current = new mapboxgl.Marker({ element: makeNavArrowEl() }).setLngLat(coords[0] as any).addTo(map);
     if (followRef.current) {
       followingRef.current = true;
       const initBrng = coords.length > 1 ? bearingDeg(coords[0], coords[Math.min(coords.length - 1, 3)]) : 0;
@@ -251,6 +264,14 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
       const upMv = (steps[si + 1] || steps[si])?.maneuver || {};
       const instr = t >= 1 ? "You have arrived" : upMv.instruction || "Continue straight";
       driverM.current?.setLngLat(pos as any);
+      // Show only the remaining route ahead (consume the traveled portion).
+      {
+        let ri = 1;
+        while (ri < segCum.length && segCum[ri] < traveled) ri++;
+        const remaining = t >= 1 ? [coords[coords.length - 1]] : [pos, ...coords.slice(ri)];
+        const rsrc: any = map.getSource("route");
+        if (rsrc && rsrc.setData) rsrc.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: remaining } });
+      }
       if (followRef.current && followingRef.current) {
         const m2 = mapRef.current!;
         m2.setCenter(pos as any);

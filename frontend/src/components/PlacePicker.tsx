@@ -24,20 +24,28 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
     const q = query.trim();
     if (q.length >= 2) {
       const token = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
+      // Search Box API: far better POI/lodging coverage (hotels, motels, resorts,
+      // extended-stays). Restricted to the ~100-mile Orlando operating-area bbox.
       const url =
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
-        `?access_token=${token}&proximity=-81.3789,28.5384&country=us&limit=10` +
-        `&bbox=-83.03,27.09,-79.73,29.99&types=poi,address,place,neighborhood`;
+        `https://api.mapbox.com/search/searchbox/v1/forward?q=${encodeURIComponent(q)}` +
+        `&access_token=${token}&proximity=-81.3789,28.5384` +
+        `&bbox=-83.03,27.09,-79.73,29.99&country=us&limit=10&language=en`;
       fetch(url)
         .then((r) => r.json())
         .then((j: any) => {
           if (!active) return;
-          const feats = (j?.features || []).map((f: any) => {
-            const cats = (f.properties?.category || "").toLowerCase();
-            const label = f.place_name || f.text;
-            const isAirport = cats.includes("airport") || /airport/i.test(label);
-            return { label, lat: f.center[1], lng: f.center[0], airport: isAirport };
-          });
+          const feats = (j?.features || [])
+            .map((f: any) => {
+              const p = f.properties || {};
+              const coords = f.geometry?.coordinates || p.coordinates && [p.coordinates.longitude, p.coordinates.latitude] || [];
+              const name = p.name || p.name_preferred || "";
+              const addr = p.place_formatted || p.full_address || p.address || "";
+              const label = addr && addr !== name ? `${name}${name ? ", " : ""}${addr}` : name;
+              const cats = (Array.isArray(p.poi_category) ? p.poi_category.join(",") : "").toLowerCase();
+              const isAirport = cats.includes("airport") || /airport/i.test(name);
+              return { label: label || name, lat: coords[1], lng: coords[0], airport: isAirport };
+            })
+            .filter((x: any) => typeof x.lat === "number" && typeof x.lng === "number");
           setPlaces(feats);
         })
         .catch(() => {});

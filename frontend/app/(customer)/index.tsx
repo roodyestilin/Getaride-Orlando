@@ -192,8 +192,13 @@ export default function CustomerHome() {
         <View style={{ width: 40 }} />
       </BlurView>
 
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
+      <View style={styles.sheet}>
         <View style={styles.handle} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.md }}
+        >
         <Text style={styles.sheetTitle}>Where to?</Text>
 
         <View style={styles.modeRow}>
@@ -328,6 +333,7 @@ export default function CustomerHome() {
           loading={loading}
           testID="find-rides"
         />
+        </ScrollView>
       </View>
 
       <PlacePicker
@@ -389,15 +395,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    maxHeight: "60%",
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     ...shadow,
   },
-  handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.md },
-  sheetTitle: { fontFamily: font.bold, fontSize: 22, color: colors.onSurface, marginBottom: spacing.md },
+  handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.sm },
+  sheetTitle: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface, marginBottom: spacing.sm },
   modeRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },
   modePill: {
     flexDirection: "row",
