@@ -379,7 +379,9 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     }
     const b = new mapboxgl.LngLatBounds();
     pts.forEach((p) => b.extend([p.lng, p.lat]));
-    map.fitBounds(b, { padding: { top: 150, bottom: 320 + bottomInset, left: 56, right: 56 }, maxZoom: 15, duration: 600 });
+    const botPad = bottomInset > 0 ? bottomInset + 24 : 320;
+    const topPad = bottomInset > 0 ? 90 : 150;
+    map.fitBounds(b, { padding: { top: topPad, bottom: botPad, left: 56, right: 56 }, maxZoom: 15, duration: 600 });
   };
 
   const updateAll = () => {

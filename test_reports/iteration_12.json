@@ -1,0 +1,28 @@
+{
+  "summary": "Customer Ride home two-pin framing bug-fix verification (frontend only, mobile viewport 390x844). All 4 requirements PASS. Login lands on Ride home; single-pin visible above sheet; both pins framed above sheet after destination selection with route line drawn; Find Rides visible and navigates to /ride/{id}.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verifications": [
+    "REQ1 - Login lands on Ride home: signed in as rider@getaride.com / Ride1234. pickup-row visible immediately after Sign In; 'Where to?' bottom sheet + Mapbox map rendered; bottom tabs = [Ride, Activity, Inbox, Account] with Ride active.",
+    "REQ2 - Two-pin framing after destination set: selected 'Universal Studios Florida' via destination-row picker. Both mapboxgl-marker DOM nodes visible — destination pin at (x=321, y=65) upper-right, pickup pin at (x=43, y=291) lower-left. Sheet top starts at y=484. Both pin centers (y=85.5 and y=311.5) sit fully above the sheet (2/2 pins above y=484). Purple route line clearly drawn between them (see /tmp/two_pins.png).",
+    "REQ3 - Single-pin case: before choosing a destination, pickup pin is at (x=182, y=352) with pin bottom ≈ y=393, still above sheet top y=484 — visible and not clipped.",
+    "REQ4 - Find Rides visible + navigation: find-rides bbox {x:24, y:714, w:342, h:54} => bottom=768 which is above the 844 viewport bottom. Tapping it navigated to /ride/2267e36d-eca6-47a7-b574-214f56cfb949 (offers screen)."
+  ],
+  "test_report_links": ["/tmp/single_pin.png", "/tmp/dest_picker.png", "/tmp/two_pins.png"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Non-blocking: (customer)/index.tsx still 555 lines — approaching 700-line threshold; consider extracting AirportDetailsModal and styles as previously suggested.",
+    "Non-blocking (pre-existing): console warnings 'shadow* deprecated / props.pointerEvents deprecated' — cosmetic RN Web warnings only, not caused by this fix."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "None; used seeded rider@getaride.com credentials.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "MapView.web.tsx uses bottomInset prop; in (customer)/index.tsx it's set to winH*0.5, and fitBounds() applies bottom padding = bottomInset+24 (or 320) and top padding 90/150. This keeps both pins framed inside the visible map area above the 60%-height 'Where to?' sheet. Login route is /auth; use testID email-input/password-input and click text 'Sign In'."
+}
