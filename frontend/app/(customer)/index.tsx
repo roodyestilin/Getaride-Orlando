@@ -198,7 +198,8 @@ export default function CustomerHome() {
   const airportReady =
     isAirportTrip &&
     !!airline &&
-    (!fromAirport || (flightNumber.trim().length >= 2 && !!terminal && baggageClaim.trim().length >= 1));
+    !!terminal &&
+    (!fromAirport || (flightNumber.trim().length >= 2 && baggageClaim.trim().length >= 1));
 
   const findRides = async () => {
     if (!destination) return;
@@ -237,7 +238,7 @@ export default function CustomerHome() {
             airline,
             bags,
             flight_number: fromAirport ? flightNumber.trim() : null,
-            terminal: fromAirport ? terminal : null,
+            terminal: terminal || null,
             baggage_claim: fromAirport ? baggageClaim.trim() : null,
           },
         },
@@ -369,7 +370,7 @@ export default function CustomerHome() {
               <Text style={styles.airportSummaryTitle}>{fromAirport ? "Airport pickup details" : "Airport drop-off details"}</Text>
               <Text style={styles.airportSummarySub}>
                 {airportReady
-                  ? `${airline}${flightNumber ? ` · ${flightNumber}` : ""}${fromAirport && terminal ? ` · Term ${terminal}` : ""}${fromAirport && baggageClaim ? ` · Claim ${baggageClaim}` : ""} · ${bags} bag${bags === 1 ? "" : "s"}`
+                  ? `${airline}${flightNumber ? ` · ${flightNumber}` : ""}${terminal ? ` · Term ${terminal}` : ""}${fromAirport && baggageClaim ? ` · Claim ${baggageClaim}` : ""} · ${bags} bag${bags === 1 ? "" : "s"}`
                   : "Tap to add flight & bag details"}
               </Text>
             </View>
@@ -469,7 +470,7 @@ function LocationRow({ icon, iconColor, label, onPress, placeholder, trailing, t
 function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, setAirline, flightNumber, setFlightNumber, bags, setBags, terminal, setTerminal, baggageClaim, setBaggageClaim, onClose, onSubmit, insets }: any) {
   const steps: string[] = fromAirport
     ? ["flight", "terminal", "baggage", "airline", "bags"]
-    : ["airline", "bags"];
+    : ["airline", "terminal", "bags"];
   const key = steps[Math.min(step, steps.length - 1)];
   const isLast = step === steps.length - 1;
   const valid =
@@ -488,7 +489,9 @@ function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, set
   };
   const subtitles: Record<string, string> = {
     flight: "We'll share this with your driver so they can track your arrival.",
-    terminal: "MCO has terminals A, B and C — pick where you'll exit.",
+    terminal: fromAirport
+      ? "MCO has terminals A, B and C — pick where you'll exit."
+      : "MCO has terminals A, B and C — pick your departure terminal.",
     baggage: "The carousel number so your driver knows where to meet you.",
     airline: "Helps your driver find the right terminal.",
     bags: "So your driver brings enough trunk space.",
