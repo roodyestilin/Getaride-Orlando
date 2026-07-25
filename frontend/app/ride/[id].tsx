@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Linking,
   TextInput,
+  Modal,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +20,7 @@ import MapView, { LatLng } from "@/src/components/MapView";
 import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
 import VehicleImage from "@/src/components/VehicleImage";
+import StripeCardForm from "@/src/components/StripeCardForm";
 import { api } from "@/src/api";
 import { speak, unlockSpeech } from "@/src/speech";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
@@ -60,6 +62,9 @@ export default function RideScreen() {
   const [status, setStatus] = useState<string>("searching");
   const [selecting, setSelecting] = useState<string | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [payMethod, setPayMethod] = useState<{ enabled: boolean; has_card: boolean } | null>(null);
+  const [pendingOffer, setPendingOffer] = useState<any>(null);
+  const [cardSecret, setCardSecret] = useState<string | null>(null);
   const statusRef = useRef(status);
   statusRef.current = status;
   const spokenRef = useRef<string | null>(null);
@@ -72,6 +77,13 @@ export default function RideScreen() {
       spokenRef.current = r.ride.status;
     });
   }, [id]);
+
+  // Load the rider's payment-method status so we can prompt for a card on accept.
+  useEffect(() => {
+    api("/payments/method")
+      .then((m: any) => setPayMethod({ enabled: !!m.enabled, has_card: !!m.has_card }))
+      .catch(() => setPayMethod({ enabled: false, has_card: false }));
+  }, []);
 
   // Female-voice announcements at each trip status change.
   useEffect(() => {
@@ -106,10 +118,9 @@ export default function RideScreen() {
     return () => clearInterval(iv);
   }, [tick, status]);
 
-  const accept = async (offer: any) => {
+  const confirmSelect = async (offer: any) => {
     setSelecting(offer.id);
     setAcceptError(null);
-    unlockSpeech();
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       const r: any = await api(`/rides/${id}/select`, { method: "POST", body: { offer_id: offer.id } });
@@ -119,6 +130,45 @@ export default function RideScreen() {
       setAcceptError(e?.message || "Could not confirm this offer. Please try again.");
       setSelecting(null);
     }
+  };
+
+  const accept = async (offer: any) => {
+    setAcceptError(null);
+    unlockSpeech();
+    // Card payments enabled but no card saved yet → collect one before confirming.
+    if (payMethod?.enabled && !payMethod?.has_card) {
+      setPendingOffer(offer);
+      setSelecting(offer.id);
+      try {
+        const r: any = await api("/payments/setup-intent", { method: "POST" });
+        setCardSecret(r.client_secret);
+      } catch (e: any) {
+        setAcceptError(e?.message || "Could not start card setup. Please try again.");
+        setPendingOffer(null);
+        setSelecting(null);
+      }
+      return;
+    }
+    await confirmSelect(offer);
+  };
+
+  const onCardSaved = async (setupIntentId: string) => {
+    try {
+      await api("/payments/setup-complete", { method: "POST", body: { setup_intent_id: setupIntentId } });
+      setCardSecret(null);
+      setPayMethod({ enabled: true, has_card: true });
+      const offer = pendingOffer;
+      setPendingOffer(null);
+      if (offer) await confirmSelect(offer);
+    } catch (e: any) {
+      setAcceptError(e?.message || "Could not save your card. Please try again.");
+    }
+  };
+
+  const closeCardSheet = () => {
+    setCardSecret(null);
+    setPendingOffer(null);
+    setSelecting(null);
   };
 
   const cancel = async () => {
@@ -188,7 +238,51 @@ export default function RideScreen() {
       ) : (
         <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} />
       )}
+
+      <CardEntrySheet
+        visible={!!cardSecret}
+        clientSecret={cardSecret}
+        fare={pendingOffer?.fare}
+        driverName={pendingOffer?.driver?.name}
+        onSaved={onCardSaved}
+        onError={setAcceptError}
+        onClose={closeCardSheet}
+        insets={insets}
+      />
     </View>
+  );
+}
+
+function CardEntrySheet({ visible, clientSecret, fare, driverName, onSaved, onError, onClose, insets }: any) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.cardBackdrop}>
+        <View style={[styles.cardSheet, { paddingBottom: insets.bottom + spacing.xl }]}>
+          <View style={styles.cardGrip} />
+          <View style={styles.cardHeadRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardHeadTitle}>Add a payment method</Text>
+              <Text style={styles.cardHeadSub}>
+                {typeof fare === "number"
+                  ? `To confirm ${driverName || "this driver"}'s $${fare.toFixed(2)} fare, add a card or pay with a wallet.`
+                  : "Add a card or pay with Apple Pay / Google Pay to confirm your ride."}
+              </Text>
+            </View>
+            <Pressable testID="card-sheet-close" onPress={onClose} hitSlop={10} style={styles.cardClose}>
+              <Ionicons name="close" size={22} color={colors.onSurface} />
+            </Pressable>
+          </View>
+
+          {clientSecret ? (
+            <StripeCardForm clientSecret={clientSecret} onSaved={onSaved} onError={onError} ctaLabel="Save & confirm ride" />
+          ) : (
+            <ActivityIndicator color={colors.brandPrimary} style={{ marginVertical: spacing.xl }} />
+          )}
+
+          <Text style={styles.cardHelp}>You won't be charged until a driver is assigned. Test card: 4242 4242 4242 4242.</Text>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -494,6 +588,14 @@ function ActionBtn({ icon, label, onPress, danger, disabled, testID }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#eef1f4" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
+  cardBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  cardSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: spacing.xl, paddingTop: spacing.md },
+  cardGrip: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.lg },
+  cardHeadRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, marginBottom: spacing.lg },
+  cardHeadTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
+  cardHeadSub: { fontFamily: font.regular, fontSize: 13, color: colors.muted, marginTop: 4, lineHeight: 18 },
+  cardClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
+  cardHelp: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: spacing.lg, textAlign: "center" },
   backBtn: {
     position: "absolute",
     left: spacing.lg,

@@ -1296,7 +1296,9 @@ async def create_setup_intent(user=Depends(get_current_user)):
     customer_id = await get_or_create_stripe_customer(user)
     si = await asyncio.to_thread(
         lambda: stripe_sdk.SetupIntent.create(
-            customer=customer_id, payment_method_types=["card"], usage="off_session",
+            customer=customer_id,
+            automatic_payment_methods={"enabled": True},
+            usage="off_session",
             metadata={"user_id": user["id"]},
         )
     )

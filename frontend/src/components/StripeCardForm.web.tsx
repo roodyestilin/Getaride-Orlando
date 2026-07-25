@@ -10,9 +10,10 @@ type Props = {
   clientSecret: string;
   onSaved: (setupIntentId: string) => void;
   onError: (msg: string) => void;
+  ctaLabel?: string;
 };
 
-function InnerForm({ onSaved, onError }: Omit<Props, "clientSecret">) {
+function InnerForm({ onSaved, onError, ctaLabel }: Omit<Props, "clientSecret">) {
   const stripe = useStripe();
   const elements = useElements();
   const [busy, setBusy] = useState(false);
@@ -51,19 +52,19 @@ function InnerForm({ onSaved, onError }: Omit<Props, "clientSecret">) {
           opacity: !stripe || !ready || busy ? 0.6 : 1,
         }}
       >
-        {busy ? "Saving…" : "Save card"}
+        {busy ? "Saving…" : ctaLabel || "Save card"}
       </button>
     </div>
   );
 }
 
-export default function StripeCardForm({ clientSecret, onSaved, onError }: Props) {
+export default function StripeCardForm({ clientSecret, onSaved, onError, ctaLabel }: Props) {
   if (!stripePromise) {
     return null;
   }
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "stripe", variables: { colorPrimary: colors.brandPrimary } } }}>
-      <InnerForm onSaved={onSaved} onError={onError} />
+      <InnerForm onSaved={onSaved} onError={onError} ctaLabel={ctaLabel} />
     </Elements>
   );
 }
