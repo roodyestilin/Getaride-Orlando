@@ -11,15 +11,18 @@ type Props = {
   title: string;
   onClose: () => void;
   onSelect: (place: LatLng) => void;
+  onlyMCO?: boolean;
 };
 
-export default function PlacePicker({ visible, title, onClose, onSelect }: Props) {
+const MCO: LatLng = { lat: 28.4312, lng: -81.3081, label: "Orlando International Airport (MCO)", airport: true };
+
+export default function PlacePicker({ visible, title, onClose, onSelect, onlyMCO }: Props) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [places, setPlaces] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || onlyMCO) return;
     let active = true;
     const q = query.trim();
     if (q.length >= 2) {
@@ -57,7 +60,7 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
     return () => {
       active = false;
     };
-  }, [query, visible]);
+  }, [query, visible, onlyMCO]);
 
   if (!visible) return null;
 
@@ -81,9 +84,37 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
             value={query}
             onChangeText={setQuery}
             autoFocus
+            editable={!onlyMCO}
           />
         </View>
 
+        {onlyMCO ? (
+          <View>
+            <View style={styles.noteBox}>
+              <Ionicons name="airplane" size={16} color={colors.brandPrimary} />
+              <Text style={styles.noteText}>
+                Getaride is an airport-only service. Your other stop must be Orlando International Airport.
+              </Text>
+            </View>
+            <Pressable
+              testID="only-mco-option"
+              style={styles.row}
+              onPress={() => {
+                onSelect(MCO);
+                setQuery("");
+                onClose();
+              }}
+            >
+              <View style={styles.pin}>
+                <Ionicons name="airplane" size={18} color={colors.brandPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowText}>Orlando International Airport (MCO)</Text>
+                <Text style={styles.rowSub}>1 Jeff Fuqua Blvd, Orlando, FL 32827</Text>
+              </View>
+            </Pressable>
+          </View>
+        ) : (
         <FlatList
           data={places}
           keyExtractor={(item, index) => `${item.label}-${index}`}
@@ -106,6 +137,7 @@ export default function PlacePicker({ visible, title, onClose, onSelect }: Props
           )}
           ListEmptyComponent={<Text style={styles.empty}>No places found.</Text>}
         />
+        )}
       </View>
     </View>
   );
@@ -133,6 +165,9 @@ const styles = StyleSheet.create({
   },
   search: { flex: 1, fontFamily: font.regular, fontSize: 16, color: colors.onSurface },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
+  rowSub: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  noteBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+  noteText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.brandPrimary, lineHeight: 18 },
   pin: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
   rowText: { flex: 1, fontFamily: font.medium, fontSize: 15, color: colors.onSurface },
   empty: { fontFamily: font.regular, color: colors.muted, textAlign: "center", marginTop: spacing.xl },

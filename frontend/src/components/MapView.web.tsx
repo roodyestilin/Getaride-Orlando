@@ -17,6 +17,7 @@ type Props = {
   destination?: LatLng | null;
   driver?: LatLng | null;
   focusPoint?: LatLng | null;
+  chaseTo?: LatLng | null;
   bottomInset?: number;
   enrouteFrom?: LatLng | null;
   navFrom?: LatLng | null;
@@ -166,7 +167,7 @@ function arrivalTime(durationSec: number): string {
 }
 
 
-export default function MapView({ pickup, pulsePickup, destination, driver, focusPoint, bottomInset = 0, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
+export default function MapView({ pickup, pulsePickup, destination, driver, focusPoint, chaseTo, bottomInset = 0, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -210,9 +211,23 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
   const placeDriver = (lng: number, lat: number) => {
     const map = mapRef.current;
     if (!map) return;
-    const [sl, sa] = snapToRoute(routeRef.current, lng, lat);
+    const coords = routeRef.current;
+    const [sl, sa] = snapToRoute(coords, lng, lat);
     if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat([sl, sa]).addTo(map);
     else driverM.current.setLngLat([sl, sa]);
+    // Customer tracking: show only the portion of the route still ahead of the driver.
+    if (coords && coords.length > 1) {
+      let bestI = 0;
+      let bestD = Infinity;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const q = nearestOnSegment([sl, sa], coords[i], coords[i + 1]);
+        const d = (q[0] - sl) ** 2 + (q[1] - sa) ** 2;
+        if (d < bestD) { bestD = d; bestI = i; }
+      }
+      const remaining = [[sl, sa], ...coords.slice(bestI + 1)];
+      const rsrc: any = map.getSource("route");
+      if (rsrc && rsrc.setData) rsrc.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: remaining } });
+    }
   };
 
   const positionAt = (traveled: number, coords: number[][], segCum: number[]): number[] => {
@@ -362,6 +377,16 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
       map.easeTo({ center: [focusPoint.lng, focusPoint.lat], zoom: 15.6, padding: { top: 40, bottom: 40 + bottomInset, left: 40, right: 40 }, duration: 600 });
       return;
     }
+    // Customer tracking: frame only the driver and their live target so the map
+    // tightens (zooms in) as the driver gets closer.
+    if (chaseTo && driver && !navMode) {
+      const b = new mapboxgl.LngLatBounds();
+      b.extend([driver.lng, driver.lat]);
+      b.extend([chaseTo.lng, chaseTo.lat]);
+      const botPad = bottomInset > 0 ? bottomInset + 24 : 240;
+      map.fitBounds(b, { padding: { top: 120, bottom: botPad, left: 56, right: 56 }, maxZoom: 16.5, duration: 700 });
+      return;
+    }
     const pts: LatLng[] = [];
     if (navMode) {
       pts.push(navFrom!, navTo!);
@@ -488,7 +513,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     if (mapRef.current && size) mapRef.current.resize();
   }, [size]);
 
-  const depKey = JSON.stringify({ pickup, pulsePickup, destination, driver, focusPoint, stops, enrouteFrom, navFrom, navTo, follow });
+  const depKey = JSON.stringify({ pickup, pulsePickup, destination, driver, focusPoint, chaseTo, stops, enrouteFrom, navFrom, navTo, follow });
   useEffect(() => {
     updateAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps

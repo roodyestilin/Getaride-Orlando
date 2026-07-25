@@ -17,7 +17,6 @@ import { storage } from "@/src/utils/storage";
 import { colors, font, radius, shadow, spacing } from "@/src/theme";
 
 const DEFAULT_PICKUP: LatLng = { lat: 28.5439, lng: -81.3729, label: "Lake Eola Park" };
-const MCO: LatLng = { lat: 28.4312, lng: -81.3081, label: "Orlando International Airport (MCO)", airport: true };
 const PENDING_RIDE_KEY = "pendingRide";
 
 const SCHEDULE_OPTIONS = ["In 30 min", "In 1 hour", "In 2 hours", "Tonight"];
@@ -34,7 +33,7 @@ export default function CustomerHome() {
   const { height: winH } = useWindowDimensions();
   const { user } = useAuth();
   const [pickup, setPickup] = useState<LatLng>(DEFAULT_PICKUP);
-  const [destination, setDestination] = useState<LatLng | null>(MCO);
+  const [destination, setDestination] = useState<LatLng | null>(null);
   const [stops, setStops] = useState<LatLng[]>([]);
   const [mode, setMode] = useState<"now" | "scheduled">("now");
   const [schedule, setSchedule] = useState(SCHEDULE_OPTIONS[0]);
@@ -91,27 +90,9 @@ export default function CustomerHome() {
 
   const onSelectPlace = (p: LatLng) => {
     setError(null);
-    const pIsMCO = isMCO(p);
-    if (picker === "pickup") {
-      setPickup(p);
-      // Airport-only model: exactly one end must be MCO.
-      if (pIsMCO) {
-        // Picked the airport as pickup → the destination must be a real place.
-        if (isMCO(destination)) setDestination(null);
-      } else {
-        // A non-airport pickup forces the destination to MCO.
-        setDestination(MCO);
-      }
-    } else if (picker === "destination") {
-      setDestination(p);
-      if (pIsMCO) {
-        if (isMCO(pickup)) setPickup(DEFAULT_PICKUP);
-      } else {
-        setPickup(MCO);
-      }
-    } else if (picker === "stop") {
-      setStops((s) => [...s, p]);
-    }
+    if (picker === "pickup") setPickup(p);
+    else if (picker === "destination") setDestination(p);
+    else if (picker === "stop") setStops((s) => [...s, p]);
   };
 
   // Flip the trip direction (to-airport ⇄ from-airport).
@@ -452,6 +433,11 @@ export default function CustomerHome() {
       <PlacePicker
         visible={picker !== null}
         title={picker === "pickup" ? "Set pickup" : picker === "stop" ? "Add a stop" : "Set destination"}
+        onlyMCO={
+          picker === "destination" ? !isMCO(pickup)
+            : picker === "pickup" ? (!!destination && !isMCO(destination))
+            : false
+        }
         onClose={() => setPicker(null)}
         onSelect={onSelectPlace}
       />

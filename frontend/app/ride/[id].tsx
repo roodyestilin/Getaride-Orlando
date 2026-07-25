@@ -152,15 +152,18 @@ export default function RideScreen() {
 
   const isSearching = status === "searching";
   const driverLoc: LatLng | null = track?.driver_location || ride.assigned_driver?.start || null;
+  const onTrip = status === "in_progress" || status === "completed";
 
   return (
     <View style={styles.container}>
       <MapView
-        pickup={ride.pickup}
-        destination={ride.destination}
-        stops={ride.stops}
+        pickup={isSearching ? ride.pickup : onTrip ? null : ride.pickup}
+        pulsePickup={!isSearching && !onTrip}
+        destination={isSearching ? ride.destination : onTrip ? ride.destination : null}
+        stops={onTrip ? ride.stops : isSearching ? ride.stops : []}
         driver={isSearching ? null : driverLoc}
-        enrouteFrom={isSearching ? null : ride.assigned_driver?.start}
+        enrouteFrom={isSearching ? null : onTrip ? ride.pickup : ride.assigned_driver?.start}
+        chaseTo={isSearching ? null : onTrip ? ride.destination : ride.pickup}
         focusPoint={status === "arrived" ? (driverLoc || ride.pickup) : null}
         bottomInset={isSearching ? winH * 0.6 : 0}
         style={StyleSheet.absoluteFill}
