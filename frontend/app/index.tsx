@@ -14,7 +14,8 @@ export default function Index() {
     );
   }
 
-  if (!user) return <Redirect href="/auth" />;
+  // Guests land on the customer Ride home; they're only asked to log in at "Find Rides".
+  if (!user) return <Redirect href="/(customer)" />;
   return <Redirect href={user.role === "driver" ? "/(driver)" : "/(customer)"} />;
 }
 

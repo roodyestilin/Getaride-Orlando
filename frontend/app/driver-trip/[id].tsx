@@ -369,7 +369,9 @@ export default function DriverTrip() {
                     <Ionicons name="airplane" size={16} color={colors.brandPrimary} />
                     <Text style={styles.airportInfoText}>
                       {ride.airport_info.direction === "from" ? "Airport pickup" : "Airport drop-off"} · {ride.airport_info.airline}
-                      {ride.airport_info.flight_number ? ` · Flight ${ride.airport_info.flight_number}` : ""} · {ride.airport_info.bags} bag{ride.airport_info.bags === 1 ? "" : "s"}
+                      {ride.airport_info.flight_number ? ` · Flight ${ride.airport_info.flight_number}` : ""}
+                      {ride.airport_info.terminal ? ` · Terminal ${ride.airport_info.terminal}` : ""}
+                      {ride.airport_info.baggage_claim ? ` · Claim ${ride.airport_info.baggage_claim}` : ""} · {ride.airport_info.bags} bag{ride.airport_info.bags === 1 ? "" : "s"}
                     </Text>
                   </View>
                 ) : null}

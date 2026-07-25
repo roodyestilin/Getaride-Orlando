@@ -11,7 +11,18 @@ import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
-  if (!user) return null;
+  if (!user) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + spacing["2xl"], paddingHorizontal: spacing.xl, alignItems: "center" }]}>
+        <View style={styles.guestIcon}>
+          <Ionicons name="person-circle-outline" size={64} color={colors.brandPrimary} />
+        </View>
+        <Text style={styles.guestTitle}>You're browsing as a guest</Text>
+        <Text style={styles.guestSub}>Sign in or create an account to manage your trips, payment methods, and messages.</Text>
+        <Button title="Sign in / Create account" onPress={() => router.push("/auth")} testID="guest-signin" style={{ marginTop: spacing.xl, alignSelf: "stretch" }} />
+      </View>
+    );
+  }
 
   const rows = [
     { icon: "mail", label: "Email", value: user.email },
@@ -80,5 +91,8 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border },
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
+  guestIcon: { marginTop: spacing["2xl"], marginBottom: spacing.md },
+  guestTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface, textAlign: "center" },
+  guestSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center", marginTop: spacing.sm, lineHeight: 20 },
   version: { textAlign: "center", marginTop: spacing.xl, fontFamily: font.regular, fontSize: 12, color: colors.muted },
 });

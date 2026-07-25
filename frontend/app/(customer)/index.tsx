@@ -12,9 +12,13 @@ import SelectField from "@/src/components/SelectField";
 import Button from "@/src/components/Button";
 import Logo from "@/src/components/Logo";
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
+import { storage } from "@/src/utils/storage";
 import { colors, font, radius, shadow, spacing } from "@/src/theme";
 
 const DEFAULT_PICKUP: LatLng = { lat: 28.5439, lng: -81.3729, label: "Lake Eola Park" };
+const MCO: LatLng = { lat: 28.4312, lng: -81.3081, label: "Orlando International Airport (MCO)", airport: true };
+const PENDING_RIDE_KEY = "pendingRide";
 
 const SCHEDULE_OPTIONS = ["In 30 min", "In 1 hour", "In 2 hours", "Tonight"];
 
@@ -28,8 +32,9 @@ const AIRLINES = [
 export default function CustomerHome() {
   const insets = useSafeAreaInsets();
   const { height: winH } = useWindowDimensions();
+  const { user } = useAuth();
   const [pickup, setPickup] = useState<LatLng>(DEFAULT_PICKUP);
-  const [destination, setDestination] = useState<LatLng | null>(null);
+  const [destination, setDestination] = useState<LatLng | null>(MCO);
   const [stops, setStops] = useState<LatLng[]>([]);
   const [mode, setMode] = useState<"now" | "scheduled">("now");
   const [schedule, setSchedule] = useState(SCHEDULE_OPTIONS[0]);
@@ -40,24 +45,81 @@ export default function CustomerHome() {
   const [airline, setAirline] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
   const [bags, setBags] = useState(1);
+  const [terminal, setTerminal] = useState("");
+  const [baggageClaim, setBaggageClaim] = useState("");
   const [airportModal, setAirportModal] = useState(false);
   const [airportStep, setAirportStep] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      api("/payments/method")
-        .then((m: any) => { if (active) setNeedCard(!!m.enabled && !m.has_card); })
-        .catch(() => {});
+      if (user) {
+        api("/payments/method")
+          .then((m: any) => { if (active) setNeedCard(!!m.enabled && !m.has_card); })
+          .catch(() => {});
+      } else {
+        setNeedCard(false);
+      }
       return () => { active = false; };
-    }, [])
+    }, [user])
   );
+
+  // Restore a ride selection saved before the guest was sent to log in.
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    (async () => {
+      const raw = await storage.getItem(PENDING_RIDE_KEY, "");
+      if (!raw || !active) return;
+      await storage.removeItem(PENDING_RIDE_KEY);
+      try {
+        const p = JSON.parse(raw as string);
+        if (p.pickup) setPickup(p.pickup);
+        if (p.destination) setDestination(p.destination);
+        if (Array.isArray(p.stops)) setStops(p.stops);
+        if (p.mode) setMode(p.mode);
+        if (p.schedule) setSchedule(p.schedule);
+        if (p.airline) setAirline(p.airline);
+        if (p.flightNumber) setFlightNumber(p.flightNumber);
+        if (typeof p.bags === "number") setBags(p.bags);
+        if (p.terminal) setTerminal(p.terminal);
+        if (p.baggageClaim) setBaggageClaim(p.baggageClaim);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [user]);
 
   const onSelectPlace = (p: LatLng) => {
     setError(null);
-    if (picker === "pickup") setPickup(p);
-    else if (picker === "destination") setDestination(p);
-    else if (picker === "stop") setStops((s) => [...s, p]);
+    const pIsMCO = isMCO(p);
+    if (picker === "pickup") {
+      setPickup(p);
+      // Airport-only model: exactly one end must be MCO.
+      if (pIsMCO) {
+        // Picked the airport as pickup → the destination must be a real place.
+        if (isMCO(destination)) setDestination(null);
+      } else {
+        // A non-airport pickup forces the destination to MCO.
+        setDestination(MCO);
+      }
+    } else if (picker === "destination") {
+      setDestination(p);
+      if (pIsMCO) {
+        if (isMCO(pickup)) setPickup(DEFAULT_PICKUP);
+      } else {
+        setPickup(MCO);
+      }
+    } else if (picker === "stop") {
+      setStops((s) => [...s, p]);
+    }
+  };
+
+  // Flip the trip direction (to-airport ⇄ from-airport).
+  const swapDirection = () => {
+    if (!destination) return;
+    Haptics.selectionAsync().catch(() => {});
+    setPickup(destination);
+    setDestination(pickup);
   };
 
   const reverseGeocode = async (lng: number, lat: number): Promise<string> => {
@@ -133,24 +195,48 @@ export default function CustomerHome() {
   }, []);
 
   const onPickupChange = async (p: LatLng) => {
+    // The airport end is fixed — ignore drags when pickup is MCO.
+    if (isMCO(pickup)) return;
     setPickup({ lat: p.lat, lng: p.lng, label: pickup.label });
     const label = await reverseGeocode(p.lng, p.lat);
     setPickup({ lat: p.lat, lng: p.lng, label });
   };
 
-  const fromAirport = !!pickup?.airport;
-  const toAirport = !!destination?.airport;
+  const isMCO = (p?: LatLng | null) => {
+    if (!p) return false;
+    const toR = Math.PI / 180;
+    const dLat = (p.lat - 28.4312) * toR;
+    const dLng = (p.lng + 81.3081) * toR;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(p.lat * toR) * Math.cos(28.4312 * toR) * Math.sin(dLng / 2) ** 2;
+    return 3958.8 * 2 * Math.asin(Math.sqrt(a)) < 2; // within ~2 miles of MCO
+  };
+
+  const fromAirport = isMCO(pickup);
+  const toAirport = isMCO(destination);
   const isAirportTrip = fromAirport || toAirport;
   const airportReady =
-    !isAirportTrip ||
-    (!!airline && bags >= 0 && (!fromAirport || flightNumber.trim().length >= 2));
+    isAirportTrip &&
+    !!airline &&
+    (!fromAirport || (flightNumber.trim().length >= 2 && !!terminal && baggageClaim.trim().length >= 1));
 
   const findRides = async () => {
     if (!destination) return;
+    if (!isAirportTrip) {
+      setError("One end of your trip must be Orlando International Airport (MCO).");
+      return;
+    }
     if (isAirportTrip && !airportReady) {
       setError(fromAirport
         ? "Please add your arrival flight, airline and bag count."
         : "Please add your airline and bag count.");
+      return;
+    }
+    // Guests: save the selection and send them to log in / sign up first.
+    if (!user) {
+      await storage.setItem(PENDING_RIDE_KEY, JSON.stringify({
+        pickup, destination, stops, mode, schedule, airline, flightNumber, bags, terminal, baggageClaim,
+      }));
+      router.push("/auth");
       return;
     }
     setLoading(true);
@@ -165,14 +251,14 @@ export default function CustomerHome() {
           stops,
           when: mode,
           scheduled_time: mode === "scheduled" ? schedule : null,
-          airport_info: isAirportTrip
-            ? {
-                direction: fromAirport ? "from" : "to",
-                airline,
-                bags,
-                flight_number: fromAirport ? flightNumber.trim() : null,
-              }
-            : null,
+          airport_info: {
+            direction: fromAirport ? "from" : "to",
+            airline,
+            bags,
+            flight_number: fromAirport ? flightNumber.trim() : null,
+            terminal: fromAirport ? terminal : null,
+            baggage_claim: fromAirport ? baggageClaim.trim() : null,
+          },
         },
       });
       router.push(`/ride/${res.ride.id}`);
@@ -228,13 +314,21 @@ export default function CustomerHome() {
         )}
 
         <View style={styles.inputCard}>
-          <LocationRow
-            icon="ellipse"
-            iconColor={colors.success}
-            label={pickup.label || "Pickup location"}
-            onPress={() => setPicker("pickup")}
-            testID="pickup-row"
-          />
+          {isMCO(pickup) ? (
+            <View style={styles.locRow} testID="pickup-row">
+              <Ionicons name="airplane" size={14} color={colors.brandPrimary} />
+              <Text style={styles.locText} numberOfLines={1}>Orlando International Airport (MCO)</Text>
+              <Ionicons name="lock-closed" size={13} color={colors.muted} />
+            </View>
+          ) : (
+            <LocationRow
+              icon="ellipse"
+              iconColor={colors.success}
+              label={pickup.label || "Pickup location"}
+              onPress={() => setPicker("pickup")}
+              testID="pickup-row"
+            />
+          )}
           {stops.map((s, i) => (
             <View key={i}>
               <View style={styles.divider} />
@@ -249,20 +343,33 @@ export default function CustomerHome() {
             </View>
           ))}
           <View style={styles.divider} />
-          <LocationRow
-            icon="location"
-            iconColor={colors.brandPrimary}
-            label={destination?.label || "Where are you going?"}
-            placeholder={!destination}
-            onPress={() => setPicker("destination")}
-            testID="destination-row"
-          />
+          {isMCO(destination) ? (
+            <View style={styles.locRow} testID="destination-row">
+              <Ionicons name="airplane" size={14} color={colors.brandPrimary} />
+              <Text style={styles.locText} numberOfLines={1}>Orlando International Airport (MCO)</Text>
+              <Ionicons name="lock-closed" size={13} color={colors.muted} />
+            </View>
+          ) : (
+            <LocationRow
+              icon="location"
+              iconColor={colors.brandPrimary}
+              label={destination?.label || "Where are you going?"}
+              placeholder={!destination}
+              onPress={() => setPicker("destination")}
+              testID="destination-row"
+            />
+          )}
+          <Pressable testID="swap-direction" onPress={swapDirection} style={styles.swapBtn} hitSlop={8}>
+            <Ionicons name="swap-vertical" size={18} color={colors.brandPrimary} />
+          </Pressable>
         </View>
 
-        <View style={styles.pinHint}>
-          <Ionicons name="hand-left-outline" size={13} color={colors.muted} />
-          <Text style={styles.pinHintText}>Drag the green pin on the map to set your exact pickup</Text>
-        </View>
+        {!isMCO(pickup) ? (
+          <View style={styles.pinHint}>
+            <Ionicons name="hand-left-outline" size={13} color={colors.muted} />
+            <Text style={styles.pinHintText}>Drag the green pin on the map to set your exact pickup</Text>
+          </View>
+        ) : null}
 
 
         <Pressable testID="add-stop" onPress={() => setPicker("stop")} style={styles.addStop}>
@@ -281,7 +388,7 @@ export default function CustomerHome() {
               <Text style={styles.airportSummaryTitle}>{fromAirport ? "Airport pickup details" : "Airport drop-off details"}</Text>
               <Text style={styles.airportSummarySub}>
                 {airportReady
-                  ? `${airline}${flightNumber ? ` · ${flightNumber}` : ""} · ${bags} bag${bags === 1 ? "" : "s"}`
+                  ? `${airline}${flightNumber ? ` · ${flightNumber}` : ""}${fromAirport && terminal ? ` · Term ${terminal}` : ""}${fromAirport && baggageClaim ? ` · Claim ${baggageClaim}` : ""} · ${bags} bag${bags === 1 ? "" : "s"}`
                   : "Tap to add flight & bag details"}
               </Text>
             </View>
@@ -333,6 +440,10 @@ export default function CustomerHome() {
         setFlightNumber={setFlightNumber}
         bags={bags}
         setBags={setBags}
+        terminal={terminal}
+        setTerminal={setTerminal}
+        baggageClaim={baggageClaim}
+        setBaggageClaim={setBaggageClaim}
         onClose={() => setAirportModal(false)}
         onSubmit={() => { setAirportModal(false); findRides(); }}
         insets={insets}
@@ -369,22 +480,30 @@ function LocationRow({ icon, iconColor, label, onPress, placeholder, trailing, t
   );
 }
 
-function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, setAirline, flightNumber, setFlightNumber, bags, setBags, onClose, onSubmit, insets }: any) {
-  const steps: string[] = fromAirport ? ["flight", "airline", "bags"] : ["airline", "bags"];
+function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, setAirline, flightNumber, setFlightNumber, bags, setBags, terminal, setTerminal, baggageClaim, setBaggageClaim, onClose, onSubmit, insets }: any) {
+  const steps: string[] = fromAirport
+    ? ["flight", "terminal", "baggage", "airline", "bags"]
+    : ["airline", "bags"];
   const key = steps[Math.min(step, steps.length - 1)];
   const isLast = step === steps.length - 1;
   const valid =
     key === "flight" ? flightNumber.trim().length >= 2 :
+    key === "terminal" ? !!terminal :
+    key === "baggage" ? baggageClaim.trim().length >= 1 :
     key === "airline" ? !!airline :
     true;
 
   const titles: Record<string, string> = {
     flight: "Arrival flight number",
+    terminal: "Which terminal?",
+    baggage: "Baggage claim number",
     airline: "Which airline?",
     bags: "How many bags?",
   };
   const subtitles: Record<string, string> = {
     flight: "We'll share this with your driver so they can track your arrival.",
+    terminal: "MCO has terminals A, B and C — pick where you'll exit.",
+    baggage: "The carousel number so your driver knows where to meet you.",
     airline: "Helps your driver find the right terminal.",
     bags: "So your driver brings enough trunk space.",
   };
@@ -421,6 +540,30 @@ function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, set
               autoFocus
               value={flightNumber}
               onChangeText={setFlightNumber}
+            />
+          ) : key === "terminal" ? (
+            <View style={styles.terminalRow}>
+              {["A", "B", "C"].map((t) => (
+                <Pressable
+                  key={t}
+                  testID={`terminal-${t}`}
+                  onPress={() => setTerminal(t)}
+                  style={[styles.terminalBtn, terminal === t && styles.terminalBtnActive]}
+                >
+                  <Text style={[styles.terminalText, terminal === t && styles.terminalTextActive]}>{t}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : key === "baggage" ? (
+            <TextInput
+              testID="baggage-input"
+              style={styles.modalInput}
+              placeholder="e.g. 12"
+              placeholderTextColor={colors.muted}
+              keyboardType="number-pad"
+              autoFocus
+              value={baggageClaim}
+              onChangeText={setBaggageClaim}
             />
           ) : key === "airline" ? (
             <View style={{ zIndex: 10 }}>
@@ -514,7 +657,21 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.brandTertiary, borderWidth: 1, borderColor: colors.brandPrimary },
   chipText: { fontFamily: font.medium, fontSize: 13, color: colors.muted },
   chipTextActive: { color: colors.brandPrimary },
-  inputCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.lg },
+  inputCard: { position: "relative", backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingLeft: spacing.lg, paddingRight: spacing.lg + 44 },
+  swapBtn: {
+    position: "absolute",
+    right: spacing.md,
+    top: "50%",
+    marginTop: -18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   locRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 46 },
   locText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.onSurface },
   locPlaceholder: { color: colors.muted, fontFamily: font.regular },
@@ -543,6 +700,11 @@ const styles = StyleSheet.create({
   modalInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.lg, height: 56, fontFamily: font.semibold, fontSize: 18, color: colors.onSurface, backgroundColor: colors.surface },
   modalBagsRow: { flexDirection: "row", alignItems: "center", gap: spacing.xl },
   modalBagsCount: { fontFamily: font.bold, fontSize: 28, color: colors.onSurface, minWidth: 40, textAlign: "center" },
+  terminalRow: { flexDirection: "row", gap: spacing.md },
+  terminalBtn: { flex: 1, height: 72, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  terminalBtnActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
+  terminalText: { fontFamily: font.bold, fontSize: 26, color: colors.onSurface },
+  terminalTextActive: { color: colors.brandPrimary },
   airportCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.md },
   airportHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.md },
   airportTitle: { fontFamily: font.bold, fontSize: 14, color: colors.onSurface },

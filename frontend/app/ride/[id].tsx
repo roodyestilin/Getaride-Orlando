@@ -51,6 +51,7 @@ function arriveClock(mins: number): string {
 export default function RideScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const { height: winH } = useWindowDimensions();
 
   const [ride, setRide] = useState<any>(null);
   const [offers, setOffers] = useState<any[]>([]);
@@ -160,6 +161,7 @@ export default function RideScreen() {
         driver={isSearching ? null : driverLoc}
         enrouteFrom={isSearching ? null : ride.assigned_driver?.start}
         focusPoint={status === "arrived" ? (driverLoc || ride.pickup) : null}
+        bottomInset={isSearching ? winH * 0.6 : 0}
         style={StyleSheet.absoluteFill}
       />
 

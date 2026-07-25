@@ -1,6 +1,6 @@
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { useFonts } from "expo-font";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/auth";
+import AppSplash from "@/src/components/AppSplash";
 
 LogBox.ignoreAllLogs(true);
 
@@ -26,6 +27,7 @@ export default function RootLayout() {
   });
 
   const ready = (iconsLoaded || iconErr) && (fontsLoaded || fontErr);
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -40,6 +42,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#fff" } }}>
             <Stack.Screen name="chat/[id]" options={{ presentation: "modal", gestureEnabled: false }} />
           </Stack>
+          {!splashDone ? <AppSplash onDone={() => setSplashDone(true)} /> : null}
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

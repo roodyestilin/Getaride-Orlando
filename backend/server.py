@@ -135,8 +135,9 @@ def round_half(x: float) -> float:
     return round(x * 2) / 2
 
 
-# Service area: trips must start or end within this radius of Orlando (ORLANDO defined above).
+# Service area: trips must start or end at Orlando International Airport (MCO).
 SERVICE_RADIUS_MILES = 100.0
+MCO = {"lat": 28.4312, "lng": -81.3081}
 
 
 def path_distance(pickup, destination, stops) -> float:
@@ -272,6 +273,8 @@ class AirportInfo(BaseModel):
     airline: str
     bags: int = 0
     flight_number: Optional[str] = None
+    terminal: Optional[str] = None       # A | B | C (arrival/pickup only)
+    baggage_claim: Optional[str] = None  # baggage carousel number (arrival/pickup only)
 
 
 class RideReq(BaseModel):
@@ -457,11 +460,10 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         raise HTTPException(403, "Only customers can request rides")
     if CARD_ON_FILE_ENABLED and not user.get("default_payment_method"):
         raise HTTPException(402, "Please add a payment method before requesting a ride.")
-    # Service-area rule: a ride must start OR end within 100 miles of Orlando.
+    # Airport-only service: every trip must start OR end at MCO (Orlando Intl Airport).
     pu, de = req.pickup.dict(), req.destination.dict()
-    if (haversine_miles(pu, ORLANDO) > SERVICE_RADIUS_MILES
-            and haversine_miles(de, ORLANDO) > SERVICE_RADIUS_MILES):
-        raise HTTPException(400, "Trips must start or end within 100 miles of Orlando.")
+    if (haversine_miles(pu, MCO) > 2.0 and haversine_miles(de, MCO) > 2.0):
+        raise HTTPException(400, "All trips must start or end at Orlando International Airport (MCO).")
     fare = compute_fare(pu, de, [s.dict() for s in req.stops])
     ride = {
         "id": str(uuid.uuid4()),
