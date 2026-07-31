@@ -175,6 +175,8 @@ def public_user(u: dict) -> dict:
         "role": u["role"],
         "phone": u.get("phone"),
         "photo": u.get("photo"),
+        "date_of_birth": u.get("date_of_birth"),
+        "created_at": u.get("created_at"),
         "rating": u.get("rating", 5.0),
         "vehicle": u.get("vehicle"),
         "plate": u.get("plate"),
@@ -190,6 +192,25 @@ def public_user(u: dict) -> dict:
         "ssn_last4": u.get("ssn_last4"),
         "agreed_terms": u.get("agreed_terms"),
     }
+
+
+def compute_age(dob: str):
+    """Parse a YYYY-MM-DD (or MM/DD/YYYY) date and return the age in whole years."""
+    if not dob:
+        return None
+    s = dob.strip()
+    parsed = None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            parsed = datetime.strptime(s, fmt)
+            break
+        except ValueError:
+            continue
+    if not parsed:
+        return None
+    today = datetime.now(timezone.utc)
+    return today.year - parsed.year - ((today.month, today.day) < (parsed.month, parsed.day))
+
 
 
 def verify_ssn(ssn: str) -> bool:
@@ -241,6 +262,7 @@ class RegisterReq(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone: Optional[str] = None
+    date_of_birth: Optional[str] = None  # YYYY-MM-DD
     photo: Optional[str] = None
     vehicle: Optional[str] = None
     plate: Optional[str] = None
@@ -366,6 +388,14 @@ async def register(req: RegisterReq):
         raise HTTPException(409, "An account with this email already exists")
     if not req.photo:
         raise HTTPException(400, "A profile photo is required.")
+    if req.role == "customer":
+        if not (req.phone and req.phone.strip()):
+            raise HTTPException(400, "A phone number is required.")
+        age = compute_age(req.date_of_birth or "")
+        if age is None:
+            raise HTTPException(400, "Please enter a valid date of birth.")
+        if age < 18:
+            raise HTTPException(403, "You must be at least 18 years old to use Getaride.")
     hashed = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
     is_driver = req.role == "driver"
     vehicle = req.vehicle
@@ -393,6 +423,7 @@ async def register(req: RegisterReq):
         "last_name": req.last_name,
         "role": req.role,
         "phone": req.phone,
+        "date_of_birth": req.date_of_birth,
         "photo": req.photo,
         "rating": 5.0,
         "vehicle": vehicle if is_driver else None,
@@ -426,6 +457,21 @@ async def login(req: LoginReq):
 @api_router.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     return {"user": public_user(user)}
+
+
+@api_router.get("/me/profile")
+async def my_profile(user=Depends(get_current_user)):
+    if user["role"] == "driver":
+        total = await db.rides.count_documents({"assigned_driver.id": user["id"], "status": "completed"})
+    else:
+        total = await db.rides.count_documents({"customer_id": user["id"], "status": "completed"})
+    return {
+        "total_rides": total,
+        "rating": user.get("rating", 5.0),
+        "created_at": user.get("created_at"),
+        "date_of_birth": user.get("date_of_birth"),
+        "phone": user.get("phone"),
+    }
 
 
 # --------------------------------------------------------------------------

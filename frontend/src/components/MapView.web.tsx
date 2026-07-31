@@ -11,6 +11,25 @@ export type RouteInfo = { distanceText: string; durationText: string; arrivalTex
 const TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN as string;
 mapboxgl.accessToken = TOKEN;
 
+// Branded Getaride car marker (top-down). The artwork points north-east (~45°),
+// so callers offset rotation by -45° to align the nose with the heading.
+// On web, requiring an image yields the resolved URL (string) or an object with `uri`.
+const CAR_MOD: any = require("@/assets/getaride-car.png");
+const CAR_ICON: string = typeof CAR_MOD === "string" ? CAR_MOD : (CAR_MOD?.uri ?? CAR_MOD?.default ?? "");
+const CAR_ASPECT = 103 / 150;
+
+function makeCarEl(px = 46): HTMLDivElement {
+  const el = document.createElement("div");
+  const h = Math.round(px * CAR_ASPECT);
+  el.style.cssText = `width:${px}px;height:${h}px;pointer-events:none;`;
+  const img = document.createElement("img");
+  img.src = CAR_ICON;
+  img.style.cssText = "width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.35));";
+  img.draggable = false;
+  el.appendChild(img);
+  return el;
+}
+
 type Props = {
   pickup?: LatLng | null;
   pulsePickup?: boolean;
@@ -28,6 +47,7 @@ type Props = {
   autoFit?: boolean;
   requestMarkers?: LatLng[];
   centerOn?: LatLng | null;
+  ambientCars?: boolean;
   onPickupChange?: (p: LatLng) => void;
   onRouteInfo?: (info: RouteInfo) => void;
   onNavStep?: (step: NavStep) => void;
@@ -39,15 +59,7 @@ type Props = {
 const ORLANDO: LatLng = { lat: 28.5384, lng: -81.3789 };
 
 function makeDriverEl(): HTMLDivElement {
-  const el = document.createElement("div");
-  el.style.cssText =
-    `width:30px;height:30px;border-radius:15px;background:${colors.brandPrimary};` +
-    `border:3px solid #fff;display:flex;align-items:center;justify-content:center;` +
-    `box-shadow:0 3px 10px rgba(0,0,0,.4);`;
-  el.innerHTML =
-    `<svg width="15" height="15" viewBox="0 0 512 512" fill="#fff">` +
-    `<path d="M135.2 117.4 109.1 192H402.9l-26.1-74.6C372.3 104.6 360.2 96 346.6 96H165.4c-13.6 0-25.7 8.6-30.2 21.4zM39.6 196.8 74.8 96.3C88.3 57.8 124.6 32 165.4 32H346.6c40.8 0 77.1 25.8 90.6 64.3l35.2 100.5c23.2 9.6 39.6 32.5 39.6 59.2V400v48c0 17.7-14.3 32-32 32H448c-17.7 0-32-14.3-32-32V400H96v48c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32V400 256c0-26.7 16.4-49.6 39.6-59.2zM128 288a32 32 0 1 0 -64 0 32 32 0 1 0 64 0zm288 32a32 32 0 1 0 0-64 32 32 0 1 0 0 64z"/></svg>`;
-  return el;
+  return makeCarEl(48);
 }
 
 function makeNavArrowEl(): HTMLDivElement {
@@ -167,7 +179,7 @@ function arrivalTime(durationSec: number): string {
 }
 
 
-export default function MapView({ pickup, pulsePickup, destination, driver, focusPoint, chaseTo, bottomInset = 0, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
+export default function MapView({ pickup, pulsePickup, destination, driver, focusPoint, chaseTo, bottomInset = 0, enrouteFrom, navFrom, navTo, stops = [], style, showRoute = true, autoFit = true, requestMarkers, centerOn, ambientCars, onPickupChange, onRouteInfo, onNavStep, follow, recenterKey, onUserPan }: Props) {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -181,6 +193,8 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
   const stopMs = useRef<mapboxgl.Marker[]>([]);
   const reqMs = useRef<mapboxgl.Marker[]>([]);
   const youM = useRef<mapboxgl.Marker | null>(null);
+  const ambientRef = useRef<{ marker: mapboxgl.Marker; lng: number; lat: number; hdg: number; spd: number }[]>([]);
+  const ambientRafRef = useRef<number | null>(null);
   const animRef = useRef<number | null>(null);
   const tickRef = useRef<any>(null);
   const navStateRef = useRef<NavStep | null>(null);
@@ -213,9 +227,10 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     if (!map) return;
     const coords = routeRef.current;
     const [sl, sa] = snapToRoute(coords, lng, lat);
-    if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl() }).setLngLat([sl, sa]).addTo(map);
+    if (!driverM.current) driverM.current = new mapboxgl.Marker({ element: makeDriverEl(), rotationAlignment: "map" }).setLngLat([sl, sa]).addTo(map);
     else driverM.current.setLngLat([sl, sa]);
-    // Customer tracking: show only the portion of the route still ahead of the driver.
+    // Customer tracking: show only the portion of the route still ahead of the driver
+    // and rotate the car to face along that segment.
     if (coords && coords.length > 1) {
       let bestI = 0;
       let bestD = Infinity;
@@ -224,6 +239,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
         const d = (q[0] - sl) ** 2 + (q[1] - sa) ** 2;
         if (d < bestD) { bestD = d; bestI = i; }
       }
+      try { driverM.current.setRotation(bearingDeg(coords[bestI], coords[bestI + 1]) - 45); } catch {}
       const remaining = [[sl, sa], ...coords.slice(bestI + 1)];
       const rsrc: any = map.getSource("route");
       if (rsrc && rsrc.setData) rsrc.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: remaining } });
@@ -583,6 +599,55 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recenterKey]);
+
+  // Ambient "drivers nearby" — decorative branded cars roaming the visible map.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded || !ambientCars) return;
+    const N = 6;
+    const cars: { marker: mapboxgl.Marker; lng: number; lat: number; hdg: number; spd: number }[] = [];
+    const c0 = map.getCenter();
+    for (let i = 0; i < N; i++) {
+      const lng = c0.lng + (Math.random() - 0.5) * 0.05;
+      const lat = c0.lat + (Math.random() - 0.5) * 0.05;
+      const hdg = Math.random() * 360;
+      const spd = 0.00007 + Math.random() * 0.00011; // ~degrees/sec (≈ 8–20 m/s)
+      const marker = new mapboxgl.Marker({ element: makeCarEl(34), rotationAlignment: "map" })
+        .setLngLat([lng, lat])
+        .setRotation(hdg - 45)
+        .addTo(map);
+      cars.push({ marker, lng, lat, hdg, spd });
+    }
+    ambientRef.current = cars;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(60, now - last) / 1000;
+      last = now;
+      const bounds = map.getBounds();
+      const cc = map.getCenter();
+      cars.forEach((c) => {
+        c.hdg += (Math.random() - 0.5) * 6; // gentle wander
+        const rad = (c.hdg * Math.PI) / 180;
+        c.lat += Math.cos(rad) * c.spd * dt;
+        c.lng += (Math.sin(rad) * c.spd * dt) / Math.max(0.2, Math.cos((c.lat * Math.PI) / 180));
+        if (!bounds.contains([c.lng, c.lat] as any)) {
+          // Re-spawn inside the current view so cars are always visible.
+          c.lng = cc.lng + (Math.random() - 0.5) * 0.03;
+          c.lat = cc.lat + (Math.random() - 0.5) * 0.03;
+          c.hdg = Math.random() * 360;
+        }
+        c.marker.setLngLat([c.lng, c.lat]).setRotation(c.hdg - 45);
+      });
+      ambientRafRef.current = requestAnimationFrame(step);
+    };
+    ambientRafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (ambientRafRef.current) cancelAnimationFrame(ambientRafRef.current);
+      ambientRafRef.current = null;
+      cars.forEach((c) => c.marker.remove());
+      ambientRef.current = [];
+    };
+  }, [ambientCars, loaded]);
 
   return (
     <View

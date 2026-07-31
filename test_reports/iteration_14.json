@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 14 (both). Backend: 9/9 pytest tests PASS — customer register enforces phone (400), DOB (400), age>=18 (403), photo (400); valid adult returns token + public_user with date_of_birth + created_at; GET /api/me/profile returns total_rides (int), rating (float), created_at (epoch) for both customer & driver; 401 without auth; ride create regression works. Frontend (390x844): (1) Signup 2-step flow works — Step 0 has first/last/email/password/phone/dob inputs + 18+ hint; underage DOB 01/01/2015 blocks with 'You must be at least 18 years old to use Getaride.'; adult DOB advances to Step 1 (photo-doc). No Ride/Drive role tabs anywhere. (2) become-driver link opens 4-step driver stepper (1-2-3-4 dots + 'Your account'); back-to-rider link visible; /auth?role=driver deep link also opens driver signup. (3) Account tab renders profile-stats with '50 Rides / ⭐5.0 / 1 mo On Getaride'. (4) Home map renders with branded car marker + ambient roaming car images (6 imgs) and NO 'Uncaught'/'resolveAssetSource' errors. Ride request regression validated via backend (POST /api/rides succeeds without card).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verifications": [
+    "Backend register — missing phone => 400; missing DOB => 400; DOB age<18 => 403 'at least 18'; missing photo => 400; valid adult customer => 200 with token + user.date_of_birth + user.created_at.",
+    "Backend GET /api/me/profile (customer rider@getaride.com) => {total_rides:int>=0, rating:float, created_at:epoch}; same for driver@getaride.com; unauthenticated => 401/403.",
+    "Frontend /auth signup Step 0 shows all 6 fields + '18+' hint; underage DOB shows auth-error 'You must be at least 18 years old to use Getaride.'; valid adult DOB advances to Step 1 with testID photo-doc.",
+    "Frontend has NO Drive/Ride role TAB visible anywhere on /auth.",
+    "Frontend testID become-driver visible on /auth; clicking opens 4-step driver stepper (dots 1..4) titled 'Your account' with back-to-rider link; direct navigation to /auth?role=driver also opens driver signup with back-to-rider link.",
+    "Frontend Account tab profile-stats testID rendered with 3 cells: '50\\nRides', '⭐ 5.0\\nRating', '1 mo\\nOn Getaride'.",
+    "Frontend Home (/) — branded car marker + ambient decorative cars render on the Mapbox map; page loaded with 0 crash errors ('resolveAssetSource' / 'Uncaught' not present); only pre-existing shadow*/pointerEvents deprecation warnings observed.",
+    "Regression: POST /api/rides (rider auth, no card) => 200 with ride id — ride request unaffected by iter14 changes."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_signup_dob_profile.py",
+    "/app/test_reports/pytest/iter14_signup_dob_profile.xml",
+    "/tmp/iter14_step1.png",
+    "/tmp/iter14_driver.png",
+    "/tmp/iter14_home.png",
+    "/tmp/iter14_account.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Non-blocking: /app/frontend/app/(customer)/index.tsx is 703 lines — now over the 700-line threshold. Consider extracting AirportDetailsModal, styles, and ambient-car logic into separate modules.",
+    "Non-blocking: /app/frontend/src/components/MapView.web.tsx is 660 lines; consider splitting ambient-cars logic if it grows further.",
+    "Non-blocking (pre-existing): RN Web deprecation warnings for shadow* and props.pointerEvents remain; cosmetic only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_signup_dob_profile.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (7/7 UI checks)"},
+  "seed_data_creation": "Test-created customer accounts prefixed with TEST_iter14_* via register endpoint (valid adult + intentional 400/403 cases). No cleanup needed — TEST_* prefix makes them identifiable.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend registration requires: role, email, password, name, first_name, last_name, photo (non-empty). Customer additionally requires phone + date_of_birth (YYYY-MM-DD, age>=18). GET /api/me/profile returns {total_rides, rating, created_at, date_of_birth, phone}. Frontend auth.tsx toggle-mode reveals signup; testIDs: toggle-mode, first-name-input, last-name-input, email-input, password-input, phone-input, dob-input, photo-doc, auth-submit, auth-error, step-back, become-driver, back-to-rider, signup-stepper. Account screen: profile-stats testID with three cells (Rides / Rating / On Getaride). Home map: MapView.web.tsx loads a car PNG via require() for driver + ambient decorative cars. Airport-only service: destination must be MCO; airport-details modal (airline/bags) appears before Find Rides on airport routes."
+}

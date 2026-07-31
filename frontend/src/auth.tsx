@@ -13,6 +13,8 @@ export type User = {
   rating?: number;
   vehicle?: string | null;
   plate?: string | null;
+  date_of_birth?: string | null;
+  created_at?: number;
   approval_status?: "pending" | "approved" | "declined" | "deactivated";
 };
 

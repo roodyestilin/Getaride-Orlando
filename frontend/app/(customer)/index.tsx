@@ -253,7 +253,7 @@ export default function CustomerHome() {
 
   return (
     <View style={styles.container}>
-      <MapView pickup={pickup} destination={destination} stops={stops} onPickupChange={onPickupChange} bottomInset={winH * 0.5} autoFit style={StyleSheet.absoluteFill} />
+      <MapView pickup={pickup} destination={destination} stops={stops} onPickupChange={onPickupChange} bottomInset={winH * 0.5} autoFit ambientCars style={StyleSheet.absoluteFill} />
 
       <BlurView intensity={40} tint="light" style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="home-profile" onPress={() => router.push("/(customer)/account")} style={styles.profileBtn}>

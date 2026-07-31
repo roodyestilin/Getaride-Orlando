@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import Logo from "@/src/components/Logo";
@@ -22,11 +23,38 @@ import { DRIVER_AGREEMENT_SECTIONS, DRIVER_AGREEMENT_VERSION } from "@/src/data/
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, spacing } from "@/src/theme";
 
-const STEP_TITLES = ["Your account", "Vehicle details", "License & documents", "Driver Agreement"];
+const DRIVER_STEP_TITLES = ["Your account", "Vehicle details", "License & documents", "Driver Agreement"];
+const CUSTOMER_STEP_TITLES = ["Your details", "Profile photo"];
+
+// MM/DD/YYYY → whole years old.
+function ageFromDob(mmddyyyy: string): number | null {
+  const m = mmddyyyy.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const mm = +m[1], dd = +m[2], yyyy = +m[3];
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const now = new Date();
+  let age = now.getFullYear() - yyyy;
+  if (now.getMonth() + 1 < mm || (now.getMonth() + 1 === mm && now.getDate() < dd)) age--;
+  return age;
+}
+
+function dobToISO(mmddyyyy: string): string | undefined {
+  const m = mmddyyyy.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return undefined;
+  return `${m[3]}-${m[1]}-${m[2]}`;
+}
+
+function formatDob(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+}
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const { signIn, signUp } = useAuth();
+  const params = useLocalSearchParams<{ role?: string }>();
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [role, setRole] = useState<"customer" | "driver">("customer");
@@ -36,6 +64,7 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
+  const [dob, setDob] = useState("");
   const [vehicleMake, setVehicleMake] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
   const [vehicleYear, setVehicleYear] = useState("");
@@ -52,8 +81,19 @@ export default function AuthScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const isDriverSignup = mode === "signup" && role === "driver";
+  const isCustomerSignup = mode === "signup" && role === "customer";
+  const stepTitles = isDriverSignup ? DRIVER_STEP_TITLES : CUSTOMER_STEP_TITLES;
   const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
   const modelOptions = vehicleMake ? (VEHICLE_MAKES[vehicleMake] ?? []) : [];
+
+  // Deep link (a separate link shared with prospective drivers): /auth?role=driver
+  React.useEffect(() => {
+    if (params.role === "driver") {
+      setRole("driver");
+      setMode("signup");
+      setStep(0);
+    }
+  }, [params.role]);
 
   const doRegister = async () => {
     setLoading(true);
@@ -66,6 +106,7 @@ export default function AuthScreen() {
         last_name: lastName.trim() || undefined,
         role,
         phone: phone.trim() || undefined,
+        date_of_birth: role === "customer" ? dobToISO(dob) : undefined,
         photo: photo?.dataUrl,
         vehicle_make: role === "driver" ? vehicleMake.trim() : undefined,
         vehicle_model: role === "driver" ? vehicleModel.trim() : undefined,
@@ -95,7 +136,17 @@ export default function AuthScreen() {
       return;
     }
     if (!isDriverSignup) {
-      if (!firstName || !lastName || !email || !password) { setError("Please fill in all required fields."); return; }
+      // Customer signup: step 0 = details, step 1 = profile photo.
+      if (step === 0) {
+        if (!firstName || !lastName || !email || !password) { setError("Please fill in all required fields."); return; }
+        if (phone.trim().length < 7) { setError("Please enter a valid phone number."); return; }
+        const age = ageFromDob(dob);
+        if (age === null) { setError("Please enter your date of birth as MM/DD/YYYY."); return; }
+        if (age < 18) { setError("You must be at least 18 years old to use Getaride."); return; }
+        Haptics.selectionAsync().catch(() => {});
+        setStep(1);
+        return;
+      }
       if (!photo) { setError("Please add a profile photo."); return; }
       doRegister();
       return;
@@ -128,38 +179,31 @@ export default function AuthScreen() {
 
   const switchMode = () => {
     setMode(mode === "login" ? "signup" : "login");
+    setRole("customer");
     setStep(0);
+    setDob("");
     setError(null);
   };
 
-  const switchRole = (value: "customer" | "driver") => {
+  const startDriverSignup = () => {
     Haptics.selectionAsync().catch(() => {});
-    setRole(value);
+    setRole("driver");
+    setMode("signup");
     setStep(0);
     setError(null);
-  };
-
-  const RoleTab = ({ value, label, icon }: { value: "customer" | "driver"; label: string; icon: any }) => {
-    const active = role === value;
-    return (
-      <Pressable testID={`role-${value}`} onPress={() => switchRole(value)} style={[styles.roleTab, active && styles.roleTabActive]}>
-        <Ionicons name={icon} size={18} color={active ? "#fff" : colors.muted} />
-        <Text style={[styles.roleText, active && styles.roleTextActive]}>{label}</Text>
-      </Pressable>
-    );
   };
 
   let submitLabel = "Sign In";
   if (mode === "signup") {
     if (isDriverSignup) submitLabel = step < 3 ? "Continue" : "Submit Application";
-    else submitLabel = "Create Account";
+    else submitLabel = step < 1 ? "Continue" : "Create Account";
   }
 
   const subtitle = mode === "login"
     ? "Welcome back. Sign in to continue."
     : isDriverSignup
       ? "Become a Getaride driver in 4 quick steps."
-      : "Create your account to get moving.";
+      : "Create your rider account to get moving.";
 
   const formatSsn = (raw: string) => {
     const d = raw.replace(/\D/g, "").slice(0, 9);
@@ -184,16 +228,9 @@ export default function AuthScreen() {
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
 
-        {mode === "signup" && (
-          <View style={styles.roleRow}>
-            <RoleTab value="customer" label="Ride" icon="person-outline" />
-            <RoleTab value="driver" label="Drive" icon="car-outline" />
-          </View>
-        )}
-
-        {isDriverSignup && (
+        {(isDriverSignup || isCustomerSignup) && (
           <View style={styles.stepperRow} testID="signup-stepper">
-            {STEP_TITLES.map((t, i) => (
+            {stepTitles.map((t, i) => (
               <View key={t} style={styles.stepItem}>
                 <View style={[styles.stepDot, i === step && styles.stepDotActive, i < step && styles.stepDotDone]}>
                   {i < step ? (
@@ -202,16 +239,16 @@ export default function AuthScreen() {
                     <Text style={[styles.stepNum, i === step && styles.stepNumActive]}>{i + 1}</Text>
                   )}
                 </View>
-                {i < STEP_TITLES.length - 1 && <View style={[styles.stepBar, i < step && styles.stepBarDone]} />}
+                {i < stepTitles.length - 1 && <View style={[styles.stepBar, i < step && styles.stepBarDone]} />}
               </View>
             ))}
           </View>
         )}
-        {isDriverSignup && <Text style={styles.stepTitle}>{STEP_TITLES[step]}</Text>}
+        {(isDriverSignup || isCustomerSignup) && <Text style={styles.stepTitle}>{stepTitles[step]}</Text>}
 
         <View style={styles.form}>
-          {/* Account step (also used by customer signup) */}
-          {(mode === "login" || !isDriverSignup || step === 0) && (
+          {/* Account / details step (login, driver step 0, customer step 0) */}
+          {(mode === "login" || step === 0) && (
             <>
               {mode === "signup" && (
                 <View style={styles.row}>
@@ -240,12 +277,26 @@ export default function AuthScreen() {
                 placeholder="••••••••"
                 secureTextEntry
               />
-              {isDriverSignup && (
+              {mode === "signup" && (
                 <Field label="Phone number" testID="phone-input" value={phone} onChangeText={setPhone} placeholder="(407) 555-0123" keyboardType="phone-pad" />
               )}
-              {mode === "signup" && (
+              {isCustomerSignup && (
+                <>
+                  <Field label="Date of birth" testID="dob-input" value={dob} onChangeText={(t: string) => setDob(formatDob(t))} placeholder="MM/DD/YYYY" keyboardType="number-pad" />
+                  <Text style={styles.hintText}>You must be 18 or older to use Getaride.</Text>
+                </>
+              )}
+              {isDriverSignup && (
                 <DocumentField label="Profile photo" hint="a profile photo (JPEG/PNG)" imageOnly testID="photo-doc" value={photo} onChange={setPhoto} />
               )}
+            </>
+          )}
+
+          {/* Customer profile-photo step */}
+          {isCustomerSignup && step === 1 && (
+            <>
+              <Text style={styles.photoIntro}>Add a clear photo of yourself so your driver can find you.</Text>
+              <DocumentField label="Profile photo" hint="a profile photo (JPEG/PNG)" imageOnly testID="photo-doc" value={photo} onChange={setPhoto} />
             </>
           )}
 
@@ -348,6 +399,18 @@ export default function AuthScreen() {
             <Text style={styles.toggleLink}>{mode === "login" ? "Sign up" : "Sign in"}</Text>
           </Text>
         </Pressable>
+
+        {role === "driver" ? (
+          <Pressable testID="back-to-rider" onPress={() => { setRole("customer"); setStep(0); setError(null); }} style={styles.driverLink}>
+            <Ionicons name="arrow-back" size={14} color={colors.muted} />
+            <Text style={styles.driverLinkText}>Back to rider sign up</Text>
+          </Pressable>
+        ) : (
+          <Pressable testID="become-driver" onPress={startDriverSignup} style={styles.driverLink}>
+            <Ionicons name="car-outline" size={15} color={colors.brandPrimary} />
+            <Text style={styles.driverLinkText}>Want to drive with Getaride? <Text style={styles.toggleLink}>Apply here</Text></Text>
+          </Pressable>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -434,4 +497,7 @@ const styles = StyleSheet.create({
   toggle: { marginTop: spacing.xl, alignItems: "center" },
   toggleText: { fontFamily: font.regular, fontSize: 14, color: colors.muted },
   toggleLink: { fontFamily: font.bold, color: colors.brandPrimary },
+  photoIntro: { fontFamily: font.regular, fontSize: 14, color: colors.muted, lineHeight: 20, marginBottom: spacing.xs },
+  driverLink: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: spacing.lg },
+  driverLinkText: { fontFamily: font.medium, fontSize: 13, color: colors.muted },
 });

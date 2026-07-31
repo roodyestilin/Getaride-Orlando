@@ -1,23 +1,42 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
+import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
+
+function memberDuration(createdAtSec?: number): string {
+  if (!createdAtSec) return "New";
+  const months = Math.floor((Date.now() / 1000 - createdAtSec) / (30 * 24 * 3600));
+  if (months < 1) return "New";
+  if (months < 12) return `${months} mo`;
+  const years = Math.floor(months / 12);
+  return years === 1 ? "1 yr" : `${years} yrs`;
+}
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
+  const [profile, setProfile] = useState<{ total_rides: number; rating: number; created_at?: number } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    api("/me/profile")
+      .then((p: any) => setProfile({ total_rides: p.total_rides, rating: p.rating, created_at: p.created_at }))
+      .catch(() => {});
+  }, [user]);
+
   if (!user) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + spacing["2xl"], paddingHorizontal: spacing.xl, alignItems: "center" }]}>
         <View style={styles.guestIcon}>
           <Ionicons name="person-circle-outline" size={64} color={colors.brandPrimary} />
         </View>
-        <Text style={styles.guestTitle}>You're browsing as a guest</Text>
+        <Text style={styles.guestTitle}>You&apos;re browsing as a guest</Text>
         <Text style={styles.guestSub}>Sign in or create an account to manage your trips, payment methods, and messages.</Text>
         <Button title="Sign in / Create account" onPress={() => router.push("/auth")} testID="guest-signin" style={{ marginTop: spacing.xl, alignSelf: "stretch" }} />
       </View>
@@ -40,9 +59,26 @@ export default function AccountScreen() {
       <View style={styles.head}>
         <Avatar uri={user.photo} size={84} />
         <Text style={styles.name}>{user.name}</Text>
-        <View style={styles.ratingPill}>
-          <Ionicons name="star" size={14} color={colors.warning} />
-          <Text style={styles.ratingText}>{(user.rating ?? 5).toFixed(1)}</Text>
+        <Text style={styles.roleTag}>{user.role === "driver" ? "Getaride Driver" : "Getaride Rider"}</Text>
+      </View>
+
+      <View style={styles.statsRow} testID="profile-stats">
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{profile ? profile.total_rides : "—"}</Text>
+          <Text style={styles.statLabel}>Rides</Text>
+        </View>
+        <View style={styles.statSep} />
+        <View style={styles.statCell}>
+          <View style={styles.statValueRow}>
+            <Ionicons name="star" size={16} color={colors.warning} />
+            <Text style={styles.statValue}>{(profile?.rating ?? user.rating ?? 5).toFixed(1)}</Text>
+          </View>
+          <Text style={styles.statLabel}>Rating</Text>
+        </View>
+        <View style={styles.statSep} />
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{memberDuration(profile?.created_at ?? user.created_at)}</Text>
+          <Text style={styles.statLabel}>On Getaride</Text>
         </View>
       </View>
 
@@ -79,8 +115,15 @@ export default function AccountScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
-  head: { alignItems: "center", gap: spacing.sm, marginBottom: spacing.xl },
+  head: { alignItems: "center", gap: spacing.xs, marginBottom: spacing.lg },
   name: { fontFamily: font.bold, fontSize: 22, color: colors.onSurface },
+  roleTag: { fontFamily: font.medium, fontSize: 13, color: colors.brandPrimary },
+  statsRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft, paddingVertical: spacing.lg, marginBottom: spacing.lg },
+  statCell: { flex: 1, alignItems: "center", gap: 2 },
+  statValueRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  statValue: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
+  statLabel: { fontFamily: font.regular, fontSize: 12, color: colors.muted },
+  statSep: { width: 1, height: 34, backgroundColor: colors.border },
   ratingPill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surfaceSecondary, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
   ratingText: { fontFamily: font.monoBold, fontSize: 13, color: colors.onSurface },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft, paddingHorizontal: spacing.lg },
