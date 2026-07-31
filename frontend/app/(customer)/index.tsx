@@ -19,7 +19,17 @@ import { colors, font, radius, shadow, spacing } from "@/src/theme";
 const DEFAULT_PICKUP: LatLng = { lat: 28.5439, lng: -81.3729, label: "Lake Eola Park" };
 const PENDING_RIDE_KEY = "pendingRide";
 
-const SCHEDULE_OPTIONS = ["In 30 min", "In 1 hour", "In 2 hours", "Tonight"];
+const SCHEDULE_MAX_DAYS = 7;
+
+function fmtScheduleLabel(d: Date): string {
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const isTomorrow = d.toDateString() === tomorrow.toDateString();
+  const day = sameDay ? "Today" : isTomorrow ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time}`;
+}
 
 const AIRLINES = [
   "American Airlines", "Delta Air Lines", "United Airlines", "Southwest Airlines",
@@ -36,7 +46,8 @@ export default function CustomerHome() {
   const [destination, setDestination] = useState<LatLng | null>(null);
   const [stops, setStops] = useState<LatLng[]>([]);
   const [mode, setMode] = useState<"now" | "scheduled">("now");
-  const [schedule, setSchedule] = useState(SCHEDULE_OPTIONS[0]);
+  const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  const [scheduleModal, setScheduleModal] = useState(false);
   const [picker, setPicker] = useState<null | "pickup" | "destination" | "stop">(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +88,7 @@ export default function CustomerHome() {
         if (p.destination) setDestination(p.destination);
         if (Array.isArray(p.stops)) setStops(p.stops);
         if (p.mode) setMode(p.mode);
-        if (p.schedule) setSchedule(p.schedule);
+        if (p.scheduledAt) setScheduledAt(new Date(p.scheduledAt));
         if (p.airline) setAirline(p.airline);
         if (p.flightNumber) setFlightNumber(p.flightNumber);
         if (typeof p.bags === "number") setBags(p.bags);
@@ -213,10 +224,16 @@ export default function CustomerHome() {
         : "Please add your airline and bag count.");
       return;
     }
+    if (mode === "scheduled") {
+      if (!scheduledAt) { setError("Please choose a date and time for your scheduled ride."); return; }
+      const now = Date.now();
+      if (scheduledAt.getTime() < now - 60 * 1000) { setError("Scheduled time must be in the future."); return; }
+      if (scheduledAt.getTime() > now + SCHEDULE_MAX_DAYS * 24 * 3600 * 1000) { setError("Rides can be scheduled up to 7 days in advance."); return; }
+    }
     // Guests: save the selection and send them to log in / sign up first.
     if (!user) {
       await storage.setItem(PENDING_RIDE_KEY, JSON.stringify({
-        pickup, destination, stops, mode, schedule, airline, flightNumber, bags, terminal, baggageClaim,
+        pickup, destination, stops, mode, scheduledAt: scheduledAt?.toISOString() || null, airline, flightNumber, bags, terminal, baggageClaim,
       }));
       router.push("/auth");
       return;
@@ -232,7 +249,7 @@ export default function CustomerHome() {
           destination,
           stops,
           when: mode,
-          scheduled_time: mode === "scheduled" ? schedule : null,
+          scheduled_time: mode === "scheduled" && scheduledAt ? scheduledAt.toISOString() : null,
           airport_info: {
             direction: fromAirport ? "from" : "to",
             airline,
@@ -243,7 +260,11 @@ export default function CustomerHome() {
           },
         },
       });
-      router.push(`/ride/${res.ride.id}`);
+      if (res.ride.status === "scheduled") {
+        router.push("/(customer)/trips");
+      } else {
+        router.push(`/ride/${res.ride.id}`);
+      }
     } catch (e: any) {
       setError(e?.message || "Could not request this ride. Please try again.");
     } finally {
@@ -274,25 +295,15 @@ export default function CustomerHome() {
 
         <View style={styles.modeRow}>
           <ModePill label="Ride Now" icon="flash" active={mode === "now"} onPress={() => setMode("now")} testID="mode-now" />
-          <ModePill label="Schedule" icon="calendar" active={mode === "scheduled"} onPress={() => setMode("scheduled")} testID="mode-schedule" />
+          <ModePill label="Schedule" icon="calendar" active={mode === "scheduled"} onPress={() => setScheduleModal(true)} testID="mode-schedule" />
         </View>
 
-        {mode === "scheduled" && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {SCHEDULE_OPTIONS.map((opt) => {
-              const active = schedule === opt;
-              return (
-                <Pressable
-                  key={opt}
-                  testID={`schedule-${opt}`}
-                  onPress={() => setSchedule(opt)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+        {mode === "scheduled" && scheduledAt && (
+          <Pressable testID="schedule-summary" onPress={() => setScheduleModal(true)} style={styles.scheduleChip}>
+            <Ionicons name="calendar" size={16} color={colors.brandPrimary} />
+            <Text style={styles.scheduleChipText}>Pickup {fmtScheduleLabel(scheduledAt)}</Text>
+            <Ionicons name="pencil" size={14} color={colors.muted} />
+          </Pressable>
         )}
 
         <View style={styles.inputCard}>
@@ -429,6 +440,22 @@ export default function CustomerHome() {
         insets={insets}
       />
 
+      <ScheduleModal
+        visible={scheduleModal}
+        initial={scheduledAt}
+        onCancel={() => {
+          setScheduleModal(false);
+          if (!scheduledAt) setMode("now");
+        }}
+        onConfirm={(d: Date) => {
+          setScheduledAt(d);
+          setMode("scheduled");
+          setScheduleModal(false);
+          setError(null);
+        }}
+        insets={insets}
+      />
+
       <PlacePicker
         visible={picker !== null}
         title={picker === "pickup" ? "Set pickup" : picker === "stop" ? "Add a stop" : "Set destination"}
@@ -441,6 +468,105 @@ export default function CustomerHome() {
         onSelect={onSelectPlace}
       />
     </View>
+  );
+}
+
+function ScheduleModal({ visible, initial, onCancel, onConfirm, insets }: any) {
+  const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  const days: Date[] = Array.from({ length: SCHEDULE_MAX_DAYS + 1 }, (_, i) => {
+    const d = startOfDay(new Date());
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const roundedNext = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 30);
+    const m = d.getMinutes();
+    d.setMinutes(m - (m % 15), 0, 0);
+    return d;
+  };
+
+  const [dayIdx, setDayIdx] = useState(0);
+  const [minutes, setMinutes] = useState(() => { const r = roundedNext(); return r.getHours() * 60 + r.getMinutes(); });
+
+  useEffect(() => {
+    if (!visible) return;
+    const base = initial ? new Date(initial) : roundedNext();
+    const di = days.findIndex((d) => d.toDateString() === startOfDay(base).toDateString());
+    setDayIdx(di >= 0 ? di : 0);
+    setMinutes(base.getHours() * 60 + base.getMinutes());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const isToday = dayIdx === 0;
+  const minToday = (() => { const r = roundedNext(); return r.getHours() * 60 + r.getMinutes(); })();
+  const slots = Array.from({ length: 96 }, (_, i) => i * 15).filter((m) => !isToday || m >= minToday);
+
+  const chosen = (() => { const d = new Date(days[dayIdx]); d.setMinutes(minutes); return d; })();
+  const valid = slots.includes(minutes) || slots.length === 0 ? slots.includes(minutes) : false;
+  const fmtTime = (m: number) => {
+    const h = Math.floor(m / 60); const mm = m % 60;
+    const ap = h < 12 ? "AM" : "PM"; const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${mm.toString().padStart(2, "0")} ${ap}`;
+  };
+  const dayLabel = (d: Date, i: number) => {
+    if (i === 0) return "Today";
+    if (i === 1) return "Tomorrow";
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
+      <View style={styles.schedBackdrop}>
+        <View style={[styles.schedSheet, { paddingBottom: insets.bottom + spacing.xl }]}>
+          <View style={styles.handle} />
+          <View style={styles.schedHead}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.schedTitle}>Schedule your ride</Text>
+              <Text style={styles.schedSub}>Book a pickup up to 7 days in advance.</Text>
+            </View>
+            <Pressable testID="schedule-close" onPress={onCancel} hitSlop={10} style={styles.schedClose}>
+              <Ionicons name="close" size={22} color={colors.onSurface} />
+            </Pressable>
+          </View>
+
+          <Text style={styles.schedLabel}>Date</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {days.map((d, i) => {
+              const active = i === dayIdx;
+              return (
+                <Pressable key={i} testID={`sched-day-${i}`} onPress={() => setDayIdx(i)} style={[styles.chip, active && styles.chipActive]}>
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{dayLabel(d, i)}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <Text style={[styles.schedLabel, { marginTop: spacing.md }]}>Pickup time</Text>
+          <ScrollView style={styles.timeList} contentContainerStyle={{ paddingVertical: spacing.xs }} showsVerticalScrollIndicator={false}>
+            {slots.map((m) => {
+              const active = m === minutes;
+              return (
+                <Pressable key={m} testID={`sched-time-${m}`} onPress={() => setMinutes(m)} style={[styles.timeRow, active && styles.timeRowActive]}>
+                  <Text style={[styles.timeText, active && styles.timeTextActive]}>{fmtTime(m)}</Text>
+                  {active ? <Ionicons name="checkmark-circle" size={18} color={colors.brandPrimary} /> : null}
+                </Pressable>
+              );
+            })}
+            {slots.length === 0 ? <Text style={styles.timeEmpty}>No more slots today — pick another day.</Text> : null}
+          </ScrollView>
+
+          <Button
+            title={`Set pickup · ${fmtScheduleLabel(chosen)}`}
+            onPress={() => onConfirm(chosen)}
+            disabled={!valid}
+            testID="schedule-confirm"
+            style={{ marginTop: spacing.md }}
+          />
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -644,6 +770,21 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.brandTertiary, borderWidth: 1, borderColor: colors.brandPrimary },
   chipText: { fontFamily: font.medium, fontSize: 13, color: colors.muted },
   chipTextActive: { color: colors.brandPrimary },
+  scheduleChip: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: colors.brandPrimary, paddingHorizontal: spacing.lg, height: 44, marginBottom: spacing.md },
+  scheduleChipText: { flex: 1, fontFamily: font.semibold, fontSize: 14, color: colors.brandPrimary },
+  schedBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  schedSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: spacing.xl, paddingTop: spacing.md, maxHeight: "82%" },
+  schedHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, marginBottom: spacing.md },
+  schedTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
+  schedSub: { fontFamily: font.regular, fontSize: 13, color: colors.muted, marginTop: 2 },
+  schedClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
+  schedLabel: { fontFamily: font.semibold, fontSize: 13, color: colors.onSurfaceSecondary, marginBottom: spacing.sm },
+  timeList: { maxHeight: 240, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md },
+  timeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, height: 46 },
+  timeRowActive: { backgroundColor: colors.brandTertiary },
+  timeText: { fontFamily: font.medium, fontSize: 15, color: colors.onSurface },
+  timeTextActive: { fontFamily: font.bold, color: colors.brandPrimary },
+  timeEmpty: { fontFamily: font.regular, fontSize: 13, color: colors.muted, textAlign: "center", padding: spacing.lg },
   inputCard: { position: "relative", backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingLeft: spacing.lg, paddingRight: spacing.lg + 44 },
   swapBtn: {
     position: "absolute",

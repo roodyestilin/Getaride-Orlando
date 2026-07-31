@@ -529,6 +529,22 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
     if (haversine_miles(pu, MCO) > 2.0 and haversine_miles(de, MCO) > 2.0):
         raise HTTPException(400, "All trips must start or end at Orlando International Airport (MCO).")
     fare = compute_fare(pu, de, [s.dict() for s in req.stops])
+    scheduled_ts = None
+    if req.when == "scheduled":
+        if not req.scheduled_time:
+            raise HTTPException(400, "Please choose a date and time for your scheduled ride.")
+        try:
+            sched_dt = datetime.fromisoformat(req.scheduled_time.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(400, "Invalid scheduled time.")
+        if sched_dt.tzinfo is None:
+            sched_dt = sched_dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        if sched_dt < now - timedelta(minutes=2):
+            raise HTTPException(400, "Scheduled time must be in the future.")
+        if sched_dt > now + timedelta(days=7):
+            raise HTTPException(400, "Rides can be scheduled up to 7 days in advance.")
+        scheduled_ts = sched_dt.timestamp()
     ride = {
         "id": str(uuid.uuid4()),
         "source": "customer",
@@ -540,8 +556,9 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "stops": [s.dict() for s in req.stops],
         "when": req.when,
         "scheduled_time": req.scheduled_time,
+        "scheduled_ts": scheduled_ts,
         "airport_info": req.airport_info.dict() if req.airport_info else None,
-        "status": "searching",
+        "status": "scheduled" if req.when == "scheduled" else "searching",
         "assigned_driver": None,
         "selected_offer_id": None,
         "accepted_at": None,
@@ -552,9 +569,10 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "created_iso": datetime.now(timezone.utc).isoformat(),
     }
     await db.rides.insert_one(ride)
-    offers = build_offers(ride)
-    if offers:
-        await db.offers.insert_many(offers)
+    if ride["status"] == "searching":
+        offers = build_offers(ride)
+        if offers:
+            await db.offers.insert_many(offers)
     ride.pop("_id", None)
     return {"ride": ride}
 

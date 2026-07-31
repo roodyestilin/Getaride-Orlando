@@ -7,6 +7,7 @@ import { api } from "@/src/api";
 import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
 
 const STATUS_LABEL: Record<string, string> = {
+  scheduled: "Scheduled",
   searching: "Searching",
   driver_enroute: "Driver on the way",
   arrived: "Driver arrived",
@@ -14,6 +15,13 @@ const STATUS_LABEL: Record<string, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
 };
+
+function fmtScheduled(iso?: string): string {
+  if (!iso) return "Scheduled";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "Scheduled";
+  return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
 
 export default function CustomerTrips() {
   const insets = useSafeAreaInsets();
@@ -59,16 +67,17 @@ export default function CustomerTrips() {
         }
         renderItem={({ item }) => {
           const done = item.status === "completed";
+          const scheduled = item.status === "scheduled";
           return (
             <View style={styles.card} testID={`trip-${item.id}`}>
               <View style={styles.cardTop}>
-                <View style={[styles.statusDot, { backgroundColor: done ? colors.success : item.status === "cancelled" ? colors.error : colors.brandPrimary }]} />
+                <View style={[styles.statusDot, { backgroundColor: done ? colors.success : item.status === "cancelled" ? colors.error : scheduled ? colors.warning : colors.brandPrimary }]} />
                 <Text style={styles.statusText}>{STATUS_LABEL[item.status] || item.status}</Text>
                 <Text style={styles.fare}>${(item.final_fare ?? item.recommended_fare).toFixed(2)}</Text>
               </View>
               <Route pickup={item.pickup.label} destination={item.destination.label} />
               <Text style={styles.meta}>
-                {item.distance_miles} mi · {item.when === "scheduled" ? "Scheduled" : "Now"}
+                {item.distance_miles} mi · {scheduled ? `Pickup ${fmtScheduled(item.scheduled_time)}` : item.when === "scheduled" ? "Scheduled" : "Now"}
               </Text>
             </View>
           );
