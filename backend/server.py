@@ -474,6 +474,26 @@ async def my_profile(user=Depends(get_current_user)):
     }
 
 
+class UpdateMeReq(BaseModel):
+    phone: Optional[str] = None
+    photo: Optional[str] = None
+
+
+@api_router.patch("/me")
+async def update_me(req: UpdateMeReq, user=Depends(get_current_user)):
+    updates = {}
+    if req.phone is not None:
+        if len(req.phone.strip()) < 7:
+            raise HTTPException(400, "Please enter a valid phone number.")
+        updates["phone"] = req.phone.strip()
+    if req.photo is not None and req.photo:
+        updates["photo"] = req.photo
+    if updates:
+        await db.users.update_one({"id": user["id"]}, {"$set": updates})
+        user = await db.users.find_one({"id": user["id"]})
+    return {"user": public_user(user)}
+
+
 # --------------------------------------------------------------------------
 # Customer ride routes
 # --------------------------------------------------------------------------

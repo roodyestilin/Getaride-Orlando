@@ -24,6 +24,7 @@ type AuthState = {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (payload: any) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState>({} as AuthState);
@@ -85,8 +86,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.replace("/auth");
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const res = await api<{ user: User }>("/auth/me");
+    setUser(res.user);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

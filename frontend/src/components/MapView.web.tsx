@@ -152,6 +152,46 @@ function bearingDeg(a: number[], b: number[]): number {
   return (Math.atan2(y, x) * 180) / Math.PI;
 }
 
+function metersBetween(a: number[], b: number[]): number {
+  const R = 6371000;
+  const lat = (((a[1] + b[1]) / 2) * Math.PI) / 180;
+  const x = ((b[0] - a[0]) * Math.PI) / 180 * Math.cos(lat);
+  const y = ((b[1] - a[1]) * Math.PI) / 180;
+  return Math.sqrt(x * x + y * y) * R;
+}
+
+function buildCum(route: number[][]): number[] {
+  const cum = [0];
+  for (let i = 1; i < route.length; i++) cum[i] = cum[i - 1] + metersBetween(route[i - 1], route[i]);
+  return cum;
+}
+
+// Position + heading at a given distance (m) along a polyline.
+function posAtDistance(route: number[][], cum: number[], dist: number): { lng: number; lat: number; hdg: number } {
+  const total = cum[cum.length - 1];
+  const d = Math.max(0, Math.min(dist, total));
+  let i = 1;
+  while (i < cum.length && cum[i] < d) i++;
+  if (i >= route.length) i = route.length - 1;
+  const a = route[i - 1];
+  const b = route[i];
+  const seg = cum[i] - cum[i - 1] || 1;
+  const t = (d - cum[i - 1]) / seg;
+  return { lng: a[0] + (b[0] - a[0]) * t, lat: a[1] + (b[1] - a[1]) * t, hdg: bearingDeg(a, b) };
+}
+
+async function fetchDrivingRoute(from: [number, number], to: [number, number]): Promise<number[][] | null> {
+  try {
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${from[0]},${from[1]};${to[0]},${to[1]}?geometries=geojson&overview=full&access_token=${TOKEN}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    return json?.routes?.[0]?.geometry?.coordinates ?? null;
+  } catch {
+    return null;
+  }
+}
+
+
 function fmtDist(m: number): string {
   const ft = m * 3.28084;
   if (ft > 528) return `${(m / 1609.34).toFixed(1)} mi`;
@@ -193,7 +233,7 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
   const stopMs = useRef<mapboxgl.Marker[]>([]);
   const reqMs = useRef<mapboxgl.Marker[]>([]);
   const youM = useRef<mapboxgl.Marker | null>(null);
-  const ambientRef = useRef<{ marker: mapboxgl.Marker; lng: number; lat: number; hdg: number; spd: number }[]>([]);
+  const ambientRef = useRef<any[]>([]);
   const ambientRafRef = useRef<number | null>(null);
   const animRef = useRef<number | null>(null);
   const tickRef = useRef<any>(null);
@@ -600,48 +640,91 @@ export default function MapView({ pickup, pulsePickup, destination, driver, focu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recenterKey]);
 
-  // Ambient "drivers nearby" — decorative branded cars roaming the visible map.
+  // Ambient "drivers nearby" — branded cars that drive along REAL streets
+  // (Mapbox Directions routes) and move smoothly via per-frame interpolation.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded || !ambientCars) return;
+    let cancelled = false;
     const N = 6;
-    const cars: { marker: mapboxgl.Marker; lng: number; lat: number; hdg: number; spd: number }[] = [];
     const c0 = map.getCenter();
+    const RAD = 0.006; // ~0.6 km box so cars stay within the (tightly zoomed) view
+    const randPt = (): [number, number] => [
+      c0.lng + (Math.random() - 0.5) * 2 * RAD,
+      c0.lat + (Math.random() - 0.5) * 2 * RAD,
+    ];
+
+    type Car = {
+      marker: mapboxgl.Marker;
+      route: number[][] | null;
+      cum: number[];
+      total: number;
+      d: number;
+      speed: number;
+      fetching: boolean;
+      end: [number, number];
+    };
+
+    const assignRoute = async (car: Car, from: [number, number]) => {
+      car.fetching = true;
+      let origin = from;
+      for (let attempt = 0; attempt < 5 && !cancelled; attempt++) {
+        const to = randPt();
+        const coords = await fetchDrivingRoute(origin, to);
+        if (cancelled) return;
+        if (coords && coords.length > 1) {
+          const cum = buildCum(coords);
+          const total = cum[cum.length - 1];
+          if (total > 120) {
+            car.route = coords;
+            car.cum = cum;
+            car.total = total;
+            car.d = Math.random() * Math.min(total * 0.4, 200); // stagger start along the route
+            car.end = [coords[coords.length - 1][0], coords[coords.length - 1][1]]; // real road endpoint
+            car.marker.setLngLat([coords[0][0], coords[0][1]]);
+            car.fetching = false;
+            return;
+          }
+        }
+        origin = randPt(); // bad leg — try a fresh origin next attempt
+      }
+      car.fetching = false;
+      if (!cancelled) setTimeout(() => { if (!cancelled && !car.route) assignRoute(car, randPt()); }, 1500);
+    };
+
+    const cars: Car[] = [];
     for (let i = 0; i < N; i++) {
-      const lng = c0.lng + (Math.random() - 0.5) * 0.05;
-      const lat = c0.lat + (Math.random() - 0.5) * 0.05;
-      const hdg = Math.random() * 360;
-      const spd = 0.00007 + Math.random() * 0.00011; // ~degrees/sec (≈ 8–20 m/s)
-      const marker = new mapboxgl.Marker({ element: makeCarEl(34), rotationAlignment: "map" })
-        .setLngLat([lng, lat])
-        .setRotation(hdg - 45)
+      const marker = new mapboxgl.Marker({ element: makeCarEl(40), rotationAlignment: "map" })
+        .setLngLat([c0.lng, c0.lat])
         .addTo(map);
-      cars.push({ marker, lng, lat, hdg, spd });
+      const car: Car = { marker, route: null, cum: [], total: 0, d: 0, speed: 6 + Math.random() * 6, fetching: false, end: randPt() };
+      cars.push(car);
+      setTimeout(() => { if (!cancelled) assignRoute(car, randPt()); }, i * 220);
     }
     ambientRef.current = cars;
+
     let last = performance.now();
     const step = (now: number) => {
       const dt = Math.min(60, now - last) / 1000;
       last = now;
-      const bounds = map.getBounds();
-      const cc = map.getCenter();
-      cars.forEach((c) => {
-        c.hdg += (Math.random() - 0.5) * 6; // gentle wander
-        const rad = (c.hdg * Math.PI) / 180;
-        c.lat += Math.cos(rad) * c.spd * dt;
-        c.lng += (Math.sin(rad) * c.spd * dt) / Math.max(0.2, Math.cos((c.lat * Math.PI) / 180));
-        if (!bounds.contains([c.lng, c.lat] as any)) {
-          // Re-spawn inside the current view so cars are always visible.
-          c.lng = cc.lng + (Math.random() - 0.5) * 0.03;
-          c.lat = cc.lat + (Math.random() - 0.5) * 0.03;
-          c.hdg = Math.random() * 360;
+      cars.forEach((car) => {
+        if (!car.route || car.total <= 0) return;
+        car.d += car.speed * dt;
+        if (car.d >= car.total) {
+          const p = posAtDistance(car.route, car.cum, car.total);
+          car.marker.setLngLat([p.lng, p.lat]).setRotation(p.hdg - 45);
+          if (!car.fetching) assignRoute(car, car.end); // continue journey from where it stopped
+          return;
         }
-        c.marker.setLngLat([c.lng, c.lat]).setRotation(c.hdg - 45);
+        const p = posAtDistance(car.route, car.cum, car.d);
+        car.marker.setLngLat([p.lng, p.lat]).setRotation(p.hdg - 45);
       });
       ambientRafRef.current = requestAnimationFrame(step);
     };
     ambientRafRef.current = requestAnimationFrame(step);
+
     return () => {
+      cancelled = true;
       if (ambientRafRef.current) cancelAnimationFrame(ambientRafRef.current);
       ambientRafRef.current = null;
       cars.forEach((c) => c.marker.remove());

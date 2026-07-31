@@ -45,6 +45,7 @@ export default function AccountScreen() {
 
   const rows = [
     { icon: "mail", label: "Email", value: user.email },
+    { icon: "call", label: "Phone", value: user.phone || "—" },
     { icon: "shield-checkmark", label: "Account type", value: user.role === "driver" ? "Driver" : "Rider" },
     ...(user.role === "driver"
       ? [
@@ -98,13 +99,22 @@ export default function AccountScreen() {
       </View>
 
       {user.role === "customer" ? (
-        <Pressable testID="account-payment-methods" onPress={() => router.push("/payment-methods")} style={styles.linkRow}>
-          <View style={styles.rowIcon}>
-            <Ionicons name="card" size={18} color={colors.brandPrimary} />
-          </View>
-          <Text style={styles.linkLabel}>Payment methods</Text>
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-        </Pressable>
+        <>
+          <Pressable testID="account-edit-profile" onPress={() => router.push("/edit-profile")} style={styles.linkRow}>
+            <View style={styles.rowIcon}>
+              <Ionicons name="person" size={18} color={colors.brandPrimary} />
+            </View>
+            <Text style={styles.linkLabel}>Edit profile</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </Pressable>
+          <Pressable testID="account-payment-methods" onPress={() => router.push("/payment-methods")} style={styles.linkRow}>
+            <View style={styles.rowIcon}>
+              <Ionicons name="card" size={18} color={colors.brandPrimary} />
+            </View>
+            <Text style={styles.linkLabel}>Payment methods</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </Pressable>
+        </>
       ) : null}
 
       <Button title="Sign Out" variant="secondary" onPress={signOut} testID="sign-out" style={{ marginTop: spacing.xl }} />
