@@ -381,7 +381,7 @@ export default function CustomerHome() {
         {needCard ? (
           <Pressable testID="add-card-banner" onPress={() => router.push("/payment-methods")} style={styles.cardBanner}>
             <Ionicons name="card-outline" size={18} color={colors.brandPrimary} />
-            <Text style={styles.cardBannerText}>Add a payment method to request rides</Text>
+            <Text style={styles.cardBannerText}>Add a payment method for faster checkout</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.brandPrimary} />
           </Pressable>
         ) : null}
@@ -395,16 +395,14 @@ export default function CustomerHome() {
 
         <Button
           title={
-            needCard ? "Add payment method"
-              : isAirportTrip && !airportReady ? "Add airport details"
+            isAirportTrip && !airportReady ? "Add airport details"
               : mode === "now" ? "Find Rides" : "Schedule Ride"
           }
           onPress={
-            needCard ? () => router.push("/payment-methods")
-              : isAirportTrip && !airportReady ? () => { setAirportStep(0); setAirportModal(true); }
+            isAirportTrip && !airportReady ? () => { setAirportStep(0); setAirportModal(true); }
               : findRides
           }
-          disabled={!needCard && !destination}
+          disabled={!destination}
           loading={loading}
           testID="find-rides"
         />

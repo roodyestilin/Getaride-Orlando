@@ -458,8 +458,6 @@ def build_offers(ride: dict) -> List[dict]:
 async def create_ride(req: RideReq, user=Depends(get_current_user)):
     if user["role"] != "customer":
         raise HTTPException(403, "Only customers can request rides")
-    if CARD_ON_FILE_ENABLED and not user.get("default_payment_method"):
-        raise HTTPException(402, "Please add a payment method before requesting a ride.")
     # Airport-only service: every trip must start OR end at MCO (Orlando Intl Airport).
     pu, de = req.pickup.dict(), req.destination.dict()
     if (haversine_miles(pu, MCO) > 2.0 and haversine_miles(de, MCO) > 2.0):
@@ -1297,7 +1295,7 @@ async def create_setup_intent(user=Depends(get_current_user)):
     si = await asyncio.to_thread(
         lambda: stripe_sdk.SetupIntent.create(
             customer=customer_id,
-            automatic_payment_methods={"enabled": True},
+            payment_method_types=["card"],
             usage="off_session",
             metadata={"user_id": user["id"]},
         )
