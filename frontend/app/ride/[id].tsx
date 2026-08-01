@@ -65,6 +65,7 @@ export default function RideScreen() {
   const [payMethod, setPayMethod] = useState<{ enabled: boolean; has_card: boolean } | null>(null);
   const [pendingOffer, setPendingOffer] = useState<any>(null);
   const [cardSecret, setCardSecret] = useState<string | null>(null);
+  const [profileDriver, setProfileDriver] = useState<any>(null);
   const statusRef = useRef(status);
   statusRef.current = status;
   const spokenRef = useRef<string | null>(null);
@@ -262,10 +263,12 @@ export default function RideScreen() {
       ) : status === "completed" ? (
         <CompletedSheet ride={ride} track={track} insets={insets} tip={tip} onTip={addTip} tipFeedback={tipFeedback} rideId={id!} />
       ) : scheduledConfirmed ? (
-        <ScheduledSheet ride={ride} onCancel={() => setConfirmCancel(true)} insets={insets} />
+        <ScheduledSheet ride={ride} onCancel={() => setConfirmCancel(true)} insets={insets} onDriverPress={setProfileDriver} />
       ) : (
-        <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} />
+        <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} onDriverPress={setProfileDriver} />
       )}
+
+      <DriverProfileModal driver={profileDriver} onClose={() => setProfileDriver(null)} insets={insets} />
 
       <CancelConfirmModal
         visible={confirmCancel}
@@ -331,7 +334,7 @@ function fmtWhen(iso?: string): string {
   return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function ScheduledSheet({ ride, onCancel, insets }: any) {
+function ScheduledSheet({ ride, onCancel, insets, onDriverPress }: any) {
   const d = ride.assigned_driver || {};
   return (
     <View style={[styles.sheet, { maxHeight: "70%", paddingBottom: insets.bottom + spacing.md }]}>
@@ -343,7 +346,10 @@ function ScheduledSheet({ ride, onCancel, insets }: any) {
 
       <Text style={styles.compareTitle}>Your driver</Text>
       <View style={styles.driverCard}>
-        <Avatar uri={d.photo} size={52} />
+        <Pressable testID="scheduled-driver-avatar" onPress={() => onDriverPress?.(d)} hitSlop={6}>
+          <Avatar uri={d.photo} size={52} />
+          <View style={styles.avatarBadge}><Ionicons name="chevron-forward" size={11} color="#fff" /></View>
+        </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.driverName}>{d.name || "Your driver"}</Text>
           <Text style={styles.driverMetaText}>{[d.color, d.vehicle].filter(Boolean).join(" ")}</Text>
@@ -376,6 +382,50 @@ function ScheduledSheet({ ride, onCancel, insets }: any) {
         <Text style={styles.cancelBtnText}>Cancel scheduled ride</Text>
       </Pressable>
     </View>
+  );
+}
+
+function DriverProfileModal({ driver, onClose, insets }: any) {
+  const d = driver || {};
+  return (
+    <Modal visible={!!driver} animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.dpBackdrop} onPress={onClose}>
+        <Pressable style={[styles.dpCard, { paddingBottom: insets.bottom + spacing.lg }]} onPress={() => {}}>
+          <View style={styles.handle} />
+          <Pressable testID="driver-profile-close" onPress={onClose} hitSlop={10} style={styles.dpClose}>
+            <Ionicons name="close" size={22} color={colors.muted} />
+          </Pressable>
+
+          <View style={styles.dpHeader}>
+            <Avatar uri={d.photo} size={84} />
+            <Text style={styles.dpName} testID="driver-profile-name">{d.name || "Your driver"}</Text>
+            <View style={styles.dpRatingRow}>
+              <Ionicons name="star" size={15} color={colors.warning} />
+              <Text style={styles.dpRating}>{(d.rating ?? 5).toFixed(1)}</Text>
+              {d.trips ? <Text style={styles.dpTrips}>· {d.trips.toLocaleString()} trips</Text> : null}
+            </View>
+          </View>
+
+          <View style={styles.dpStats}>
+            <View style={styles.dpStat}>
+              <Ionicons name="car-sport" size={18} color={colors.brandPrimary} />
+              <Text style={styles.dpStatLabel}>Vehicle</Text>
+              <Text style={styles.dpStatValue}>{[d.color, d.vehicle].filter(Boolean).join(" ") || "—"}</Text>
+            </View>
+            <View style={styles.dpStat}>
+              <Ionicons name="pricetag" size={18} color={colors.brandPrimary} />
+              <Text style={styles.dpStatLabel}>Plate</Text>
+              <Text style={styles.dpStatValue}>{d.plate || "—"}</Text>
+            </View>
+          </View>
+
+          <View style={styles.dpPrivacy}>
+            <Ionicons name="shield-checkmark" size={16} color={colors.success} />
+            <Text style={styles.dpPrivacyText}>For privacy, contact details are hidden. Use in-app chat to reach your driver.</Text>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -511,7 +561,7 @@ function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCanc
   );
 }
 
-function TrackingSheet({ ride, track, status, onCancel, insets, rideId, tip, onTip }: any) {
+function TrackingSheet({ ride, track, status, onCancel, insets, rideId, tip, onTip, onDriverPress }: any) {
   const d = ride.assigned_driver || {};
   const eta = track?.eta_minutes ?? d.eta_minutes ?? 0;
   const locked = status === "in_progress";
@@ -536,7 +586,10 @@ function TrackingSheet({ ride, track, status, onCancel, insets, rideId, tip, onT
       </View>
 
       <View style={styles.driverRow}>
-        <Avatar uri={d.photo} size={56} />
+        <Pressable testID="track-driver-avatar" onPress={() => onDriverPress?.(d)} hitSlop={6}>
+          <Avatar uri={d.photo} size={56} />
+          <View style={styles.avatarBadge}><Ionicons name="chevron-forward" size={11} color="#fff" /></View>
+        </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.driverName}>{d.name}</Text>
           <Text style={styles.vehicle}>{d.color} {d.vehicle} · {d.plate}</Text>
@@ -778,6 +831,21 @@ const styles = StyleSheet.create({
   driverDot: { color: colors.muted, marginHorizontal: 2 },
   platePill: { alignSelf: "flex-start", marginTop: 6, fontFamily: font.monoBold, fontSize: 11, color: colors.onSurface, backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2, overflow: "hidden" },
   driverFare: { fontFamily: font.monoBold, fontSize: 18, color: colors.onSurface },
+  avatarBadge: { position: "absolute", right: -2, bottom: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.surface },
+  dpBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  dpCard: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingHorizontal: spacing.xl, paddingTop: spacing.sm },
+  dpClose: { position: "absolute", right: spacing.lg, top: spacing.md, width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center", zIndex: 2 },
+  dpHeader: { alignItems: "center", gap: 6, paddingTop: spacing.sm, paddingBottom: spacing.lg },
+  dpName: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
+  dpRatingRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  dpRating: { fontFamily: font.monoBold, fontSize: 14, color: colors.onSurface },
+  dpTrips: { fontFamily: font.medium, fontSize: 13, color: colors.muted },
+  dpStats: { flexDirection: "row", gap: spacing.md },
+  dpStat: { flex: 1, alignItems: "center", gap: 4, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm },
+  dpStatLabel: { fontFamily: font.medium, fontSize: 11, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.4 },
+  dpStatValue: { fontFamily: font.semibold, fontSize: 13.5, color: colors.onSurface, textAlign: "center" },
+  dpPrivacy: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
+  dpPrivacyText: { flex: 1, fontFamily: font.regular, fontSize: 12, color: colors.onSurfaceSecondary, lineHeight: 17 },
   cancelHint: { fontFamily: font.regular, fontSize: 12, color: colors.muted, lineHeight: 17, marginBottom: spacing.md },
   cancelBtn: { height: 50, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.error, alignItems: "center", justifyContent: "center" },
   cancelBtnText: { fontFamily: font.bold, fontSize: 15, color: colors.error },

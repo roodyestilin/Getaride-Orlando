@@ -364,6 +364,20 @@ export default function DriverTrip() {
                   <Text style={styles.fare}>${(ride.final_fare ?? ride.recommended_fare).toFixed(2)}</Text>
                 </View>
 
+                {ride.status === "arrived" ? (
+                  <View style={styles.meetRow} testID="dt-meet-rider">
+                    <Avatar size={40} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.meetLabel}>Meet your rider</Text>
+                      <Text style={styles.meetName}>{ride.customer_name}</Text>
+                    </View>
+                    <Pressable testID="dt-meet-chat" onPress={() => router.push(`/chat/${id}`)} style={styles.meetChat}>
+                      <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
+                      <Text style={styles.meetChatText}>Chat</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+
                 {ride.airport_info ? (
                   <View style={styles.airportInfo} testID="dt-airport-info">
                     <Ionicons name="airplane" size={16} color={colors.brandPrimary} />
@@ -479,6 +493,11 @@ const styles = StyleSheet.create({
   waitSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center" },
   statusBanner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
   statusText: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface },
+  meetRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.md },
+  meetLabel: { fontFamily: font.medium, fontSize: 11, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.4 },
+  meetName: { fontFamily: font.bold, fontSize: 16, color: colors.onSurface, marginTop: 1 },
+  meetChat: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandPrimary, borderRadius: radius.md, paddingHorizontal: spacing.md, height: 40 },
+  meetChatText: { fontFamily: font.bold, fontSize: 13, color: "#fff" },
   fare: { fontFamily: font.monoBold, fontSize: 22, color: colors.onSurface },
   riderRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   riderName: { fontFamily: font.bold, fontSize: 16, color: colors.onSurface },
