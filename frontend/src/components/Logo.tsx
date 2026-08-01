@@ -1,11 +1,22 @@
 import React from "react";
-import { View, Text, Image, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet, Pressable } from "react-native";
+import { router } from "expo-router";
 import { colors, font } from "@/src/theme";
 
 const MARK = require("@/assets/images/logo-g.png");
 
-export default function Logo({ size = 44, showWord = false, showMark = true }: { size?: number; showWord?: boolean; showMark?: boolean }) {
-  return (
+export default function Logo({
+  size = 44,
+  showWord = false,
+  showMark = true,
+  link = true,
+}: {
+  size?: number;
+  showWord?: boolean;
+  showMark?: boolean;
+  link?: boolean;
+}) {
+  const content = (
     <View style={styles.row}>
       {showMark ? (
         <Image
@@ -20,6 +31,19 @@ export default function Logo({ size = 44, showWord = false, showMark = true }: {
         </Text>
       ) : null}
     </View>
+  );
+
+  if (!link) return content;
+  return (
+    <Pressable
+      testID="logo-home"
+      onPress={() => router.push("/")}
+      accessibilityRole="link"
+      accessibilityLabel="Go to home"
+      hitSlop={6}
+    >
+      {content}
+    </Pressable>
   );
 }
 
