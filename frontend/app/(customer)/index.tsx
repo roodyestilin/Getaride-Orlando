@@ -261,7 +261,8 @@ export default function CustomerHome() {
         },
       });
       if (res.ride.status === "scheduled") {
-        router.push("/(customer)/trips");
+        // Scheduled: pick a driver on the offers screen first; it moves to Activity after selection.
+        router.push(`/ride/${res.ride.id}`);
       } else {
         router.push(`/ride/${res.ride.id}`);
       }

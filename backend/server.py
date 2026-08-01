@@ -194,6 +194,16 @@ def public_user(u: dict) -> dict:
     }
 
 
+def short_name(name):
+    """Privacy: expose only first name + last initial to the other party (e.g. 'Sarah M.')."""
+    if not name:
+        return name
+    parts = str(name).strip().split()
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]} {parts[-1][0]}."
+
+
 def compute_age(dob: str):
     """Parse a YYYY-MM-DD (or MM/DD/YYYY) date and return the age in whole years."""
     if not dob:
@@ -511,7 +521,7 @@ def build_offers(ride: dict) -> List[dict]:
         offers.append({
             "id": str(uuid.uuid4()),
             "ride_id": ride["id"],
-            "driver": {**d, "id": "sim_" + str(uuid.uuid4())[:8], "start": start},
+            "driver": {**d, "name": short_name(d["name"]), "id": "sim_" + str(uuid.uuid4())[:8], "start": start},
             "fare": fare,
             "eta_minutes": eta,
             "reveal_at": now_ts() + i * 1.6,  # progressive reveal
@@ -549,7 +559,7 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "id": str(uuid.uuid4()),
         "source": "customer",
         "customer_id": user["id"],
-        "customer_name": user["name"],
+        "customer_name": short_name(user["name"]),
         "customer_rating": user.get("rating", 5.0),
         "pickup": req.pickup.dict(),
         "destination": req.destination.dict(),
@@ -772,7 +782,7 @@ async def ensure_driver_requests():
             "id": str(uuid.uuid4()),
             "source": "sim",
             "customer_id": "sim",
-            "customer_name": random.choice(SIM_CUSTOMERS),
+            "customer_name": short_name(random.choice(SIM_CUSTOMERS)),
             "customer_rating": round(random.uniform(4.3, 5.0), 1),
             "pickup": pickup,
             "destination": dest,
