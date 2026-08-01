@@ -21,6 +21,7 @@ import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
 import VehicleImage from "@/src/components/VehicleImage";
 import StripeCardForm from "@/src/components/StripeCardForm";
+import RatingCard from "@/src/components/RatingCard";
 import { api } from "@/src/api";
 import { speak, unlockSpeech } from "@/src/speech";
 import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
@@ -377,7 +378,7 @@ function ScheduledSheet({ ride, onCancel, insets, onDriverPress }: any) {
         </View>
       </View>
 
-      <Text style={styles.cancelHint}>You can cancel up to 5 minutes before pickup. A $5.00 cancellation fee applies once a driver is assigned.</Text>
+      <Text style={styles.cancelHint}>This ride hasn't been dispatched yet, so you can cancel free of charge. A $5.00 fee only applies once your driver is on the way. Cancellations are allowed up to 5 minutes before pickup.</Text>
       <Pressable testID="cancel-scheduled" onPress={onCancel} style={styles.cancelBtn}>
         <Text style={styles.cancelBtnText}>Cancel scheduled ride</Text>
       </Pressable>
@@ -437,11 +438,11 @@ function CancelConfirmModal({ visible, scheduledTime, busy, error, onClose, onCo
           <Ionicons name="alert-circle" size={34} color={colors.warning} />
           <Text style={styles.confirmTitle}>Cancel this scheduled ride?</Text>
           <Text style={styles.confirmSub}>
-            Pickup is set for {fmtWhen(scheduledTime)}. A $5.00 cancellation fee will be charged to your card.
+            Pickup is set for {fmtWhen(scheduledTime)}. Your driver hasn't started yet, so there's no cancellation fee.
           </Text>
           {error ? <Text style={styles.confirmError}>{error}</Text> : null}
           <Pressable testID="confirm-cancel-yes" onPress={onConfirm} disabled={busy} style={[styles.confirmDanger, busy && { opacity: 0.6 }]}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmDangerText}>Cancel & pay $5.00 fee</Text>}
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmDangerText}>Cancel scheduled ride</Text>}
           </Pressable>
           <Pressable testID="confirm-cancel-no" onPress={onClose} disabled={busy} style={styles.confirmGhost}>
             <Text style={styles.confirmGhostText}>Keep my ride</Text>
@@ -707,6 +708,10 @@ function CompletedSheet({ ride, track, insets, tip, onTip, tipFeedback, rideId }
       <Text style={styles.completeFare}>${fare.toFixed(2)}</Text>
       {tip > 0 ? <Text style={styles.completeTip}>+ ${Number(tip).toFixed(2)} tip · Total ${total.toFixed(2)}</Text> : null}
       <Text style={styles.completeSub}>{ride.pickup.label} → {ride.destination.label}</Text>
+
+      {!track?.rider_rating ? (
+        <RatingCard rideId={rideId} targetName={ride.assigned_driver?.name} targetLabel="driver" />
+      ) : null}
 
       {STRIPE_CARD_FLOW ? (
         <>

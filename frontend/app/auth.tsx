@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import Logo from "@/src/components/Logo";
@@ -182,14 +182,6 @@ export default function AuthScreen() {
     setRole("customer");
     setStep(0);
     setDob("");
-    setError(null);
-  };
-
-  const startDriverSignup = () => {
-    Haptics.selectionAsync().catch(() => {});
-    setRole("driver");
-    setMode("signup");
-    setStep(0);
     setError(null);
   };
 
@@ -406,7 +398,7 @@ export default function AuthScreen() {
             <Text style={styles.driverLinkText}>Back to rider sign up</Text>
           </Pressable>
         ) : (
-          <Pressable testID="become-driver" onPress={startDriverSignup} style={styles.driverLink}>
+          <Pressable testID="become-driver" onPress={() => router.push("/drive-with-us")} style={styles.driverLink}>
             <Ionicons name="car-outline" size={15} color={colors.brandPrimary} />
             <Text style={styles.driverLinkText}>Want to drive with Getaride? <Text style={styles.toggleLink}>Apply here</Text></Text>
           </Pressable>

@@ -338,6 +338,11 @@ class TipReq(BaseModel):
     amount: float
 
 
+class RateReq(BaseModel):
+    rating: int
+    comment: Optional[str] = None
+
+
 # --------------------------------------------------------------------------
 # AI vehicle image generation (Gemini Nano Banana) — cached per description
 # --------------------------------------------------------------------------
@@ -653,14 +658,18 @@ async def cancel_ride(ride_id: str, user=Depends(get_current_user)):
     if ride.get("status") in ("completed", "cancelled"):
         return {"ok": True, "cancellation_fee": ride.get("cancellation_fee", 0)}
     is_scheduled = ride.get("when") == "scheduled"
-    has_driver = bool(ride.get("assigned_driver"))
-    fee = 0.0
-    # Scheduled rides with a confirmed driver: allowed up to 5 min before pickup, $5 fee.
-    if is_scheduled and has_driver and ride.get("scheduled_ts"):
+    # A $5 cancellation fee applies ONLY once the driver is actually on the way to pickup
+    # (dispatched / en route), for both scheduled and regular rides.
+    eff_status = ride["status"]
+    if ride.get("accepted_at"):
+        eff_status = compute_track(ride)["status"]
+    driver_on_the_way = eff_status in ("driver_enroute", "arrived")
+    fee = 5.0 if driver_on_the_way else 0.0
+    # Scheduled ride that hasn't been dispatched yet: no fee, but keep the 5-min-before-pickup cutoff.
+    if not driver_on_the_way and is_scheduled and ride.get("assigned_driver") and ride.get("scheduled_ts"):
         secs_to_pickup = ride["scheduled_ts"] - now_ts()
         if secs_to_pickup < 5 * 60:
             raise HTTPException(400, "Scheduled rides can only be cancelled up to 5 minutes before the pickup time.")
-        fee = 5.0
     # Release any authorization hold, then charge the cancellation fee (if any).
     if CARD_ON_FILE_ENABLED:
         pi_id = ride.get("payment_intent_id")
@@ -744,7 +753,8 @@ async def track_ride(ride_id: str, user=Depends(get_current_user)):
         ride = await db.rides.find_one({"id": ride_id})
     return {**track, "pickup": ride["pickup"], "destination": ride["destination"],
             "assigned_driver": ride.get("assigned_driver"), "tip": ride.get("tip", 0),
-            "final_fare": ride.get("final_fare"), "payment_status": ride.get("payment_status", "unpaid")}
+            "final_fare": ride.get("final_fare"), "payment_status": ride.get("payment_status", "unpaid"),
+            "rider_rating": ride.get("rider_rating")}
 
 
 @api_router.post("/rides/{ride_id}/tip")
@@ -768,6 +778,36 @@ async def add_tip(ride_id: str, req: TipReq, user=Depends(get_current_user)):
             logger.warning(f"Tip charge failed for {ride_id}: {e}")
             raise HTTPException(402, "We couldn't charge the tip to your card. Please try again.")
     return {"tip": amount}
+
+
+@api_router.post("/rides/{ride_id}/rate")
+async def rate_ride(ride_id: str, req: RateReq, user=Depends(get_current_user)):
+    ride = await db.rides.find_one({"id": ride_id})
+    if not ride:
+        raise HTTPException(404, "Ride not found")
+    if ride.get("status") != "completed":
+        raise HTTPException(400, "You can rate a trip only after it's completed.")
+    stars = max(1, min(5, int(req.rating)))
+    comment = (req.comment or "").strip()[:500]
+    is_customer = ride.get("customer_id") == user["id"]
+    is_driver = (ride.get("assigned_driver") or {}).get("id") == user["id"]
+    if not (is_customer or is_driver):
+        raise HTTPException(403, "You are not part of this trip.")
+    entry = {"stars": stars, "comment": comment, "at": now_ts()}
+    if is_customer:
+        # Rider rates the driver.
+        await db.rides.update_one({"id": ride_id}, {"$set": {"rider_rating": entry}})
+    else:
+        # Driver rates the rider; update the rider's aggregate rating (real user).
+        await db.rides.update_one({"id": ride_id}, {"$set": {"driver_rating": entry}})
+        cust = await db.users.find_one({"id": ride.get("customer_id")})
+        if cust:
+            cnt = cust.get("ratings_count", 0)
+            avg = cust.get("rating", 5.0)
+            new_cnt = cnt + 1
+            new_avg = round((avg * cnt + stars) / new_cnt, 2)
+            await db.users.update_one({"id": cust["id"]}, {"$set": {"rating": new_avg, "ratings_count": new_cnt}})
+    return {"ok": True, "stars": stars}
 
 
 # --------------------------------------------------------------------------

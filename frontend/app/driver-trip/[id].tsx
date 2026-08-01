@@ -9,6 +9,7 @@ import * as Speech from "expo-speech";
 import MapView from "@/src/components/MapView";
 import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
+import RatingCard from "@/src/components/RatingCard";
 import { api } from "@/src/api";
 import { unlockSpeech } from "@/src/speech";
 import { colors, font, radius, shadow, spacing } from "@/src/theme";
@@ -226,6 +227,9 @@ export default function DriverTrip() {
         <Text style={styles.doneTitle}>Trip completed</Text>
         <Text style={styles.doneFare}>+${(done.final_fare ?? done.recommended_fare).toFixed(2)}</Text>
         <Text style={styles.doneSub}>{done.pickup.label} → {done.destination.label}</Text>
+        <View style={{ alignSelf: "stretch", marginTop: spacing.md }}>
+          <RatingCard rideId={id!} targetName={done.customer_name} targetLabel="rider" />
+        </View>
         <Button title="Back to Driving" onPress={() => router.replace("/(driver)")} testID="back-driving" style={{ marginTop: spacing.xl, alignSelf: "stretch" }} />
       </View>
     );
