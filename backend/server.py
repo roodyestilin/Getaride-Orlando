@@ -569,7 +569,7 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "created_iso": datetime.now(timezone.utc).isoformat(),
     }
     await db.rides.insert_one(ride)
-    if ride["status"] == "searching":
+    if ride["status"] in ("searching", "scheduled"):
         offers = build_offers(ride)
         if offers:
             await db.offers.insert_many(offers)
@@ -618,12 +618,16 @@ async def select_offer(ride_id: str, req: SelectReq, user=Depends(get_current_us
         "start": driver["start"],
         "eta_minutes": offer["eta_minutes"],
     }
+    # A scheduled ride keeps its "scheduled" status after a driver is picked —
+    # it stays in Activity with driver details and only goes live near pickup time.
+    is_scheduled = ride.get("when") == "scheduled"
     await db.rides.update_one({"id": ride_id}, {"$set": {
-        "status": "driver_enroute",
+        "status": "scheduled" if is_scheduled else "driver_enroute",
         "assigned_driver": assigned,
         "selected_offer_id": offer["id"],
         "final_fare": offer["fare"],
-        "accepted_at": now_ts(),
+        "accepted_at": None if is_scheduled else now_ts(),
+        "driver_confirmed_at": now_ts(),
         "payment_intent_id": auth_pi_id,
         "payment_status": "authorized" if auth_pi_id else "unpaid",
     }})
@@ -633,8 +637,37 @@ async def select_offer(ride_id: str, req: SelectReq, user=Depends(get_current_us
 
 @api_router.post("/rides/{ride_id}/cancel")
 async def cancel_ride(ride_id: str, user=Depends(get_current_user)):
-    await db.rides.update_one({"id": ride_id}, {"$set": {"status": "cancelled"}})
-    return {"ok": True}
+    ride = await db.rides.find_one({"id": ride_id})
+    if not ride:
+        raise HTTPException(404, "Ride not found")
+    if ride.get("status") in ("completed", "cancelled"):
+        return {"ok": True, "cancellation_fee": ride.get("cancellation_fee", 0)}
+    is_scheduled = ride.get("when") == "scheduled"
+    has_driver = bool(ride.get("assigned_driver"))
+    fee = 0.0
+    # Scheduled rides with a confirmed driver: allowed up to 5 min before pickup, $5 fee.
+    if is_scheduled and has_driver and ride.get("scheduled_ts"):
+        secs_to_pickup = ride["scheduled_ts"] - now_ts()
+        if secs_to_pickup < 5 * 60:
+            raise HTTPException(400, "Scheduled rides can only be cancelled up to 5 minutes before the pickup time.")
+        fee = 5.0
+    # Release any authorization hold, then charge the cancellation fee (if any).
+    if CARD_ON_FILE_ENABLED:
+        pi_id = ride.get("payment_intent_id")
+        if pi_id and not ride.get("fare_captured"):
+            try:
+                await asyncio.to_thread(lambda: stripe_sdk.PaymentIntent.cancel(pi_id))
+            except Exception as e:
+                logger.warning(f"Could not void hold for {ride_id}: {e}")
+        if fee > 0:
+            try:
+                await charge_cancellation_fee(ride, fee)
+            except Exception as e:
+                logger.warning(f"Cancellation fee charge failed for {ride_id}: {e}")
+    await db.rides.update_one({"id": ride_id}, {"$set": {
+        "status": "cancelled", "cancellation_fee": fee, "payment_status": "cancelled",
+    }})
+    return {"ok": True, "cancellation_fee": fee}
 
 
 @api_router.get("/me/rides")
@@ -686,8 +719,10 @@ async def track_ride(ride_id: str, user=Depends(get_current_user)):
     ride = await db.rides.find_one({"id": ride_id})
     if not ride:
         raise HTTPException(404, "Ride not found")
-    if ride["status"] in ("searching", "cancelled"):
-        return {"status": ride["status"], "driver_location": None, "eta_minutes": 0,
+    if ride["status"] in ("searching", "scheduled", "cancelled"):
+        return {"status": ride["status"], "driver_location": (ride.get("assigned_driver") or {}).get("start"), "eta_minutes": 0,
+                "assigned_driver": ride.get("assigned_driver"), "final_fare": ride.get("final_fare"),
+                "scheduled_time": ride.get("scheduled_time"), "cancellation_fee": ride.get("cancellation_fee", 0),
                 "pickup": ride["pickup"], "destination": ride["destination"]}
     track = compute_track(ride)
     if track["status"] != ride["status"]:
@@ -1479,6 +1514,23 @@ async def charge_tip(ride: dict, amount: float):
     )
     await db.rides.update_one({"id": ride["id"]}, {"$set": {"tip_payment_intent_id": tip_pi.id}})
     return tip_pi.id
+
+
+async def charge_cancellation_fee(ride: dict, amount: float):
+    customer = await db.users.find_one({"id": ride["customer_id"]})
+    pm = (customer or {}).get("default_payment_method")
+    cust_id = (customer or {}).get("stripe_customer_id")
+    if not pm or not cust_id:
+        return None
+    fee_pi = await asyncio.to_thread(
+        lambda: stripe_sdk.PaymentIntent.create(
+            amount=int(round(amount * 100)), currency="usd", customer=cust_id,
+            payment_method=pm, confirm=True, off_session=True,
+            metadata={"ride_id": ride["id"], "kind": "cancellation_fee"},
+        )
+    )
+    await db.rides.update_one({"id": ride["id"]}, {"$set": {"cancellation_payment_intent_id": fee_pi.id}})
+    return fee_pi.id
 
 
 app.include_router(api_router)

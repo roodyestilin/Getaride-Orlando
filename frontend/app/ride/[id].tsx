@@ -68,6 +68,8 @@ export default function RideScreen() {
   const statusRef = useRef(status);
   statusRef.current = status;
   const spokenRef = useRef<string | null>(null);
+  const hasDriverRef = useRef(false);
+  hasDriverRef.current = !!ride?.assigned_driver;
 
   useEffect(() => {
     api(`/rides/${id}`).then((r: any) => {
@@ -101,7 +103,9 @@ export default function RideScreen() {
 
   const tick = useCallback(async () => {
     try {
-      if (statusRef.current === "searching") {
+      const s = statusRef.current;
+      const needsOffers = s === "searching" || (s === "scheduled" && !hasDriverRef.current);
+      if (needsOffers) {
         const r: any = await api(`/rides/${id}/offers`);
         setOffers(r.offers);
       } else {
@@ -171,9 +175,27 @@ export default function RideScreen() {
     setSelecting(null);
   };
 
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
   const cancel = async () => {
-    await api(`/rides/${id}/cancel`, { method: "POST" });
-    router.replace("/(customer)");
+    setCancelError(null);
+    setCancelBusy(true);
+    try {
+      const r: any = await api(`/rides/${id}/cancel`, { method: "POST" });
+      setConfirmCancel(false);
+      const fee = r?.cancellation_fee || 0;
+      if (fee > 0) {
+        router.replace({ pathname: "/(customer)/trips", params: { cancelled: `A $${fee.toFixed(2)} cancellation fee was charged.` } });
+      } else {
+        router.replace("/(customer)");
+      }
+    } catch (e: any) {
+      setCancelError(e?.message || "Could not cancel this ride. Please try again.");
+    } finally {
+      setCancelBusy(false);
+    }
   };
 
   const [tipState, setTipState] = useState<number | null>(null);
@@ -203,19 +225,22 @@ export default function RideScreen() {
   const isSearching = status === "searching";
   const driverLoc: LatLng | null = track?.driver_location || ride.assigned_driver?.start || null;
   const onTrip = status === "in_progress" || status === "completed";
+  const showOffers = isSearching || (status === "scheduled" && !ride.assigned_driver);
+  const scheduledConfirmed = status === "scheduled" && !!ride.assigned_driver;
+  const overview = showOffers || scheduledConfirmed;
 
   return (
     <View style={styles.container}>
       <MapView
-        pickup={isSearching ? ride.pickup : onTrip ? null : ride.pickup}
-        pulsePickup={!isSearching && !onTrip}
-        destination={isSearching ? ride.destination : onTrip ? ride.destination : null}
-        stops={onTrip ? ride.stops : isSearching ? ride.stops : []}
-        driver={isSearching ? null : driverLoc}
-        enrouteFrom={isSearching ? null : onTrip ? ride.pickup : ride.assigned_driver?.start}
-        chaseTo={isSearching ? null : onTrip ? ride.destination : ride.pickup}
+        pickup={overview ? ride.pickup : onTrip ? null : ride.pickup}
+        pulsePickup={!overview && !onTrip}
+        destination={overview ? ride.destination : onTrip ? ride.destination : null}
+        stops={onTrip ? ride.stops : overview ? ride.stops : []}
+        driver={overview ? null : driverLoc}
+        enrouteFrom={overview ? null : onTrip ? ride.pickup : ride.assigned_driver?.start}
+        chaseTo={overview ? null : onTrip ? ride.destination : ride.pickup}
         focusPoint={status === "arrived" ? (driverLoc || ride.pickup) : null}
-        bottomInset={isSearching ? winH * 0.6 : 0}
+        bottomInset={overview ? winH * 0.6 : 0}
         style={StyleSheet.absoluteFill}
       />
 
@@ -223,7 +248,7 @@ export default function RideScreen() {
         <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
       </Pressable>
 
-      {isSearching ? (
+      {showOffers ? (
         <SearchingSheet
           ride={ride}
           offers={offers}
@@ -232,12 +257,25 @@ export default function RideScreen() {
           acceptError={acceptError}
           onCancel={cancel}
           insets={insets}
+          scheduled={status === "scheduled"}
         />
       ) : status === "completed" ? (
         <CompletedSheet ride={ride} track={track} insets={insets} tip={tip} onTip={addTip} tipFeedback={tipFeedback} rideId={id!} />
+      ) : scheduledConfirmed ? (
+        <ScheduledSheet ride={ride} onCancel={() => setConfirmCancel(true)} insets={insets} />
       ) : (
         <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} />
       )}
+
+      <CancelConfirmModal
+        visible={confirmCancel}
+        scheduledTime={ride.scheduled_time}
+        busy={cancelBusy}
+        error={cancelError}
+        onClose={() => { setConfirmCancel(false); setCancelError(null); }}
+        onConfirm={cancel}
+        insets={insets}
+      />
 
       <CardEntrySheet
         visible={!!cardSecret}
@@ -286,10 +324,95 @@ function CardEntrySheet({ visible, clientSecret, fare, driverName, onSaved, onEr
   );
 }
 
-function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCancel, insets }: any) {
+function fmtWhen(iso?: string): string {
+  if (!iso) return "your scheduled time";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "your scheduled time";
+  return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function ScheduledSheet({ ride, onCancel, insets }: any) {
+  const d = ride.assigned_driver || {};
+  return (
+    <View style={[styles.sheet, { maxHeight: "70%", paddingBottom: insets.bottom + spacing.md }]}>
+      <View style={styles.handle} />
+      <View style={styles.schedBanner}>
+        <Ionicons name="calendar" size={15} color={colors.brandPrimary} />
+        <Text style={styles.schedBannerText}>Scheduled · Pickup {fmtWhen(ride.scheduled_time)}</Text>
+      </View>
+
+      <Text style={styles.compareTitle}>Your driver</Text>
+      <View style={styles.driverCard}>
+        <Avatar uri={d.photo} size={52} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.driverName}>{d.name || "Your driver"}</Text>
+          <Text style={styles.driverMetaText}>{[d.color, d.vehicle].filter(Boolean).join(" ")}</Text>
+          <View style={styles.driverMetaRow}>
+            <Ionicons name="star" size={13} color={colors.warning} />
+            <Text style={styles.driverMetaText}>{(d.rating ?? 5).toFixed(1)}</Text>
+            {d.plate ? <Text style={styles.platePill}>{d.plate}</Text> : null}
+          </View>
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={styles.recLabel}>Fare</Text>
+          <Text style={styles.driverFare}>${(ride.final_fare ?? ride.recommended_fare).toFixed(2)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.routeBox}>
+        <View style={styles.routeCol}>
+          <Ionicons name="ellipse" size={9} color={colors.success} />
+          <View style={styles.routeLine} />
+          <Ionicons name="location" size={13} color={colors.brandPrimary} />
+        </View>
+        <View style={{ flex: 1, gap: spacing.sm }}>
+          <Text style={styles.routeText} numberOfLines={1}>{ride.pickup.label}</Text>
+          <Text style={styles.routeText} numberOfLines={1}>{ride.destination.label}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.cancelHint}>You can cancel up to 5 minutes before pickup. A $5.00 cancellation fee applies once a driver is assigned.</Text>
+      <Pressable testID="cancel-scheduled" onPress={onCancel} style={styles.cancelBtn}>
+        <Text style={styles.cancelBtnText}>Cancel scheduled ride</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function CancelConfirmModal({ visible, scheduledTime, busy, error, onClose, onConfirm, insets }: any) {
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.confirmBackdrop}>
+        <View style={[styles.confirmCard, { marginBottom: insets.bottom + spacing.xl }]}>
+          <Ionicons name="alert-circle" size={34} color={colors.warning} />
+          <Text style={styles.confirmTitle}>Cancel this scheduled ride?</Text>
+          <Text style={styles.confirmSub}>
+            Pickup is set for {fmtWhen(scheduledTime)}. A $5.00 cancellation fee will be charged to your card.
+          </Text>
+          {error ? <Text style={styles.confirmError}>{error}</Text> : null}
+          <Pressable testID="confirm-cancel-yes" onPress={onConfirm} disabled={busy} style={[styles.confirmDanger, busy && { opacity: 0.6 }]}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmDangerText}>Cancel & pay $5.00 fee</Text>}
+          </Pressable>
+          <Pressable testID="confirm-cancel-no" onPress={onClose} disabled={busy} style={styles.confirmGhost}>
+            <Text style={styles.confirmGhostText}>Keep my ride</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+
+function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCancel, insets, scheduled }: any) {
   return (
     <View style={[styles.sheet, { maxHeight: "68%", paddingBottom: insets.bottom + spacing.md }]}>
       <View style={styles.handle} />
+      {scheduled ? (
+        <View style={styles.schedBanner}>
+          <Ionicons name="calendar" size={15} color={colors.brandPrimary} />
+          <Text style={styles.schedBannerText}>Pick a driver for your scheduled pickup — they'll be locked in for {fmtWhen(ride.scheduled_time)}.</Text>
+        </View>
+      ) : null}
       <View style={styles.summaryRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.recLabel}>Recommended fare</Text>
@@ -647,6 +770,26 @@ const styles = StyleSheet.create({
     ...shadowSoft,
   },
   driverName: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },
+  schedBanner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md },
+  schedBannerText: { flex: 1, fontFamily: font.semibold, fontSize: 12.5, color: colors.brandPrimary, lineHeight: 17 },
+  driverCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
+  driverMetaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 },
+  driverMetaText: { fontFamily: font.medium, fontSize: 12.5, color: colors.onSurfaceSecondary },
+  driverDot: { color: colors.muted, marginHorizontal: 2 },
+  platePill: { alignSelf: "flex-start", marginTop: 6, fontFamily: font.monoBold, fontSize: 11, color: colors.onSurface, backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2, overflow: "hidden" },
+  driverFare: { fontFamily: font.monoBold, fontSize: 18, color: colors.onSurface },
+  cancelHint: { fontFamily: font.regular, fontSize: 12, color: colors.muted, lineHeight: 17, marginBottom: spacing.md },
+  cancelBtn: { height: 50, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.error, alignItems: "center", justifyContent: "center" },
+  cancelBtnText: { fontFamily: font.bold, fontSize: 15, color: colors.error },
+  confirmBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end", paddingHorizontal: spacing.lg },
+  confirmCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, alignItems: "center", gap: spacing.sm },
+  confirmTitle: { fontFamily: font.bold, fontSize: 19, color: colors.onSurface, textAlign: "center" },
+  confirmSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center", lineHeight: 20 },
+  confirmError: { fontFamily: font.medium, fontSize: 13, color: colors.error, textAlign: "center" },
+  confirmDanger: { alignSelf: "stretch", height: 52, borderRadius: radius.md, backgroundColor: colors.error, alignItems: "center", justifyContent: "center", marginTop: spacing.md },
+  confirmDangerText: { fontFamily: font.bold, fontSize: 15, color: "#fff" },
+  confirmGhost: { alignSelf: "stretch", height: 48, alignItems: "center", justifyContent: "center" },
+  confirmGhostText: { fontFamily: font.semibold, fontSize: 15, color: colors.onSurfaceSecondary },
   vehicle: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 1 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
   metaText: { fontFamily: font.mono, fontSize: 12, color: colors.onSurfaceSecondary },
