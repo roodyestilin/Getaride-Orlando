@@ -32,13 +32,46 @@ export default function AccountScreen() {
 
   if (!user) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + spacing["2xl"], paddingHorizontal: spacing.xl, alignItems: "center" }]}>
-        <View style={styles.guestIcon}>
-          <Ionicons name="person-circle-outline" size={64} color={colors.brandPrimary} />
+      <View style={styles.container}>
+        <View style={[styles.guestHero, { paddingTop: insets.top + spacing["2xl"] }]}>
+          <View style={styles.guestHeroIcon}>
+            <Ionicons name="car-sport" size={40} color="#fff" />
+          </View>
+          <Text style={styles.guestHeroTitle}>Need a ride? We got you!</Text>
+          <Text style={styles.guestHeroSub}>
+            Sign in to compare driver offers, book Orlando airport transfers, and manage your trips.
+          </Text>
         </View>
-        <Text style={styles.guestTitle}>You&apos;re browsing as a guest</Text>
-        <Text style={styles.guestSub}>Sign in or create an account to manage your trips, payment methods, and messages.</Text>
-        <Button title="Sign in / Create account" onPress={() => router.push("/auth")} testID="guest-signin" style={{ marginTop: spacing.xl, alignSelf: "stretch" }} />
+
+        <View style={styles.guestBody}>
+          {[
+            { icon: "pricetags", title: "Compare & pick your price", desc: "Drivers send you fares — you choose the best offer." },
+            { icon: "airplane", title: "Orlando airport transfers", desc: "Fast, reliable rides to and from MCO." },
+            { icon: "shield-checkmark", title: "Track live & pay securely", desc: "Real-time tracking with card-on-file payments." },
+          ].map((f) => (
+            <View key={f.title} style={styles.guestFeature}>
+              <View style={styles.guestFeatureIcon}>
+                <Ionicons name={f.icon as any} size={20} color={colors.brandPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.guestFeatureTitle}>{f.title}</Text>
+                <Text style={styles.guestFeatureDesc}>{f.desc}</Text>
+              </View>
+            </View>
+          ))}
+
+          <Button
+            title="Sign in / Create account"
+            onPress={() => router.push("/auth")}
+            testID="guest-signin"
+            style={{ marginTop: spacing.xl, alignSelf: "stretch" }}
+          />
+          <Pressable testID="guest-become-driver" onPress={() => router.push("/drive-with-us")} style={styles.guestDriverLink}>
+            <Text style={styles.guestDriverText}>
+              Want to drive with Getaride? <Text style={styles.guestDriverLinkText}>Apply here</Text>
+            </Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -144,8 +177,17 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border },
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
-  guestIcon: { marginTop: spacing["2xl"], marginBottom: spacing.md },
-  guestTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface, textAlign: "center" },
-  guestSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center", marginTop: spacing.sm, lineHeight: 20 },
+  guestHero: { backgroundColor: colors.brandPrimary, alignItems: "center", paddingHorizontal: spacing.xl, paddingBottom: spacing["2xl"], borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  guestHeroIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center", marginBottom: spacing.lg },
+  guestHeroTitle: { fontFamily: font.bold, fontSize: 26, color: "#fff", textAlign: "center" },
+  guestHeroSub: { fontFamily: font.regular, fontSize: 14.5, color: "rgba(255,255,255,0.9)", textAlign: "center", marginTop: spacing.sm, lineHeight: 21, maxWidth: 320 },
+  guestBody: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.md },
+  guestFeature: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md },
+  guestFeatureIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+  guestFeatureTitle: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },
+  guestFeatureDesc: { fontFamily: font.regular, fontSize: 13, color: colors.muted, marginTop: 2, lineHeight: 18 },
+  guestDriverLink: { alignItems: "center", paddingVertical: spacing.md },
+  guestDriverText: { fontFamily: font.medium, fontSize: 14, color: colors.muted },
+  guestDriverLinkText: { fontFamily: font.bold, color: colors.brandPrimary },
   version: { textAlign: "center", marginTop: spacing.xl, fontFamily: font.regular, fontSize: 12, color: colors.muted },
 });
