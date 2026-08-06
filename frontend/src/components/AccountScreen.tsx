@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +22,7 @@ function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) ret
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<{ total_rides: number; rating: number; created_at?: number } | null>(null);
 
@@ -33,11 +34,12 @@ export default function AccountScreen() {
   }, [user]);
 
   if (!user) {
+    const imgH = winW / (1023 / 1537);
     return (
       <View style={styles.guestRoot}>
-        <Image source={HERO_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <Image source={HERO_IMG} style={{ width: winW, height: imgH }} resizeMode="cover" />
         <LinearGradient
-          colors={["transparent", "rgba(24,24,27,0.25)", "rgba(24,24,27,0.92)"]}
+          colors={["transparent", "rgba(24,24,27,0.25)", "rgba(24,24,27,0.95)"]}
           locations={[0, 0.5, 1]}
           style={styles.guestGradient}
         />
