@@ -180,6 +180,7 @@ export default function RideScreen() {
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmLiveCancel, setConfirmLiveCancel] = useState(false);
 
   const cancel = async () => {
     setCancelError(null);
@@ -266,10 +267,20 @@ export default function RideScreen() {
       ) : scheduledConfirmed ? (
         <ScheduledSheet ride={ride} onCancel={() => setConfirmCancel(true)} insets={insets} onDriverPress={setProfileDriver} />
       ) : (
-        <TrackingSheet ride={ride} track={track} status={status} onCancel={cancel} insets={insets} rideId={id!} tip={tip} onTip={addTip} onDriverPress={setProfileDriver} />
+        <TrackingSheet ride={ride} track={track} status={status} onCancel={() => setConfirmLiveCancel(true)} insets={insets} rideId={id!} tip={tip} onTip={addTip} onDriverPress={setProfileDriver} />
       )}
 
       <DriverProfileModal driver={profileDriver} onClose={() => setProfileDriver(null)} insets={insets} />
+
+      <LiveCancelConfirmModal
+        visible={confirmLiveCancel}
+        driverOnWay={status === "driver_enroute" || status === "arrived"}
+        busy={cancelBusy}
+        error={cancelError}
+        onClose={() => { setConfirmLiveCancel(false); setCancelError(null); }}
+        onConfirm={cancel}
+        insets={insets}
+      />
 
       <CancelConfirmModal
         visible={confirmCancel}
@@ -426,6 +437,31 @@ function DriverProfileModal({ driver, onClose, insets }: any) {
           </View>
         </Pressable>
       </Pressable>
+    </Modal>
+  );
+}
+
+function LiveCancelConfirmModal({ visible, driverOnWay, busy, error, onClose, onConfirm, insets }: any) {
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.confirmBackdrop}>
+        <View style={[styles.confirmCard, { marginBottom: insets.bottom + spacing.xl }]}>
+          <Ionicons name="alert-circle" size={34} color={colors.warning} />
+          <Text style={styles.confirmTitle}>Cancel this ride?</Text>
+          <Text style={styles.confirmSub}>
+            {driverOnWay
+              ? "Your driver is already on the way. Cancelling now will charge a $5.00 cancellation fee to your card."
+              : "Are you sure you want to cancel this ride?"}
+          </Text>
+          {error ? <Text style={styles.confirmError}>{error}</Text> : null}
+          <Pressable testID="confirm-live-cancel-yes" onPress={onConfirm} disabled={busy} style={[styles.confirmDanger, busy && { opacity: 0.6 }]}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmDangerText}>{driverOnWay ? "Cancel & pay $5.00 fee" : "Yes, cancel ride"}</Text>}
+          </Pressable>
+          <Pressable testID="confirm-live-cancel-no" onPress={onClose} disabled={busy} style={styles.confirmGhost}>
+            <Text style={styles.confirmGhostText}>Keep my ride</Text>
+          </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

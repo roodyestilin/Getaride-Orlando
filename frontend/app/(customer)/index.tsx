@@ -33,7 +33,7 @@ function fmtScheduleLabel(d: Date): string {
 
 const AIRLINES = [
   "American Airlines", "Delta Air Lines", "United Airlines", "Southwest Airlines",
-  "JetBlue", "Spirit Airlines", "Frontier Airlines", "Alaska Airlines",
+  "JetBlue", "Frontier Airlines", "Alaska Airlines",
   "Allegiant Air", "Sun Country", "Breeze Airways", "Air Canada",
   "British Airways", "Lufthansa", "Other",
 ];
