@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ImageBackground } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ImageBackground, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -9,7 +9,8 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
 
-const AIRPORT_IMG = "https://images.pexels.com/photos/34405177/pexels-photo-34405177.jpeg?auto=compress&cs=tinysrgb&w=1000";
+const HERO_IMG = require("@/assets/images/guest-hero.png");
+const LOGO_MARK = require("@/assets/images/logo-g.png");
 
 function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) return "New";
   const months = Math.floor((Date.now() / 1000 - createdAtSec) / (30 * 24 * 3600));
@@ -36,7 +37,7 @@ export default function AccountScreen() {
       <View style={styles.container}>
         <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg }}>
           <ImageBackground
-            source={{ uri: AIRPORT_IMG }}
+            source={HERO_IMG}
             style={styles.guestHero}
             imageStyle={styles.guestHeroImg}
             resizeMode="cover"
@@ -44,7 +45,7 @@ export default function AccountScreen() {
             <View style={styles.guestHeroOverlay} />
             <View style={styles.guestHeroContent}>
               <View style={styles.guestHeroIcon}>
-                <Ionicons name="car-sport" size={34} color="#fff" />
+                <Image source={LOGO_MARK} style={styles.guestHeroLogo} resizeMode="contain" />
               </View>
               <Text style={styles.guestHeroTitle}>Need a ride? We got you!</Text>
               <Text style={styles.guestHeroSub}>
@@ -190,9 +191,10 @@ const styles = StyleSheet.create({
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
   guestHero: { minHeight: 230, borderRadius: 24, overflow: "hidden", justifyContent: "flex-end" },
   guestHeroImg: { borderRadius: 24 },
-  guestHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(76,29,149,0.55)" },
+  guestHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(76,29,149,0.42)" },
   guestHeroContent: { alignItems: "center", padding: spacing.xl },
-  guestHeroIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
+  guestHeroIcon: { width: 64, height: 64, borderRadius: 18, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginBottom: spacing.md, ...shadowSoft },
+  guestHeroLogo: { width: 46, height: 46, borderRadius: 12 },
   guestHeroTitle: { fontFamily: font.bold, fontSize: 25, color: "#fff", textAlign: "center" },
   guestHeroSub: { fontFamily: font.regular, fontSize: 14, color: "rgba(255,255,255,0.92)", textAlign: "center", marginTop: spacing.sm, lineHeight: 20, maxWidth: 320 },
   guestBody: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.md },
