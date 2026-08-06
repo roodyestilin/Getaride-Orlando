@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ImageBackground, Image } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -22,6 +22,7 @@ function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) ret
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<{ total_rides: number; rating: number; created_at?: number } | null>(null);
 
@@ -33,17 +34,14 @@ export default function AccountScreen() {
   }, [user]);
 
   if (!user) {
+    const heroW = winW - spacing.lg * 2;
+    const heroH = heroW / (1486 / 1058);
     return (
       <View style={styles.container}>
         <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg }}>
-          <ImageBackground
-            source={HERO_IMG}
-            style={styles.guestHero}
-            imageStyle={styles.guestHeroImg}
-            resizeMode="cover"
-          >
-            <View style={styles.guestHeroOverlay} />
-            <View style={styles.guestHeroContent}>
+          <View style={styles.guestCard}>
+            <Image source={HERO_IMG} style={[styles.guestCardImg, { height: heroH }]} resizeMode="cover" />
+            <View style={styles.guestCaption}>
               <View style={styles.guestHeroIcon}>
                 <Image source={LOGO_MARK} style={styles.guestHeroLogo} resizeMode="contain" />
               </View>
@@ -52,7 +50,7 @@ export default function AccountScreen() {
                 Sign in to compare driver offers, book Orlando airport transfers, and manage your trips.
               </Text>
             </View>
-          </ImageBackground>
+          </View>
         </View>
 
         <View style={styles.guestBody}>
@@ -189,12 +187,11 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border },
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
-  guestHero: { minHeight: 230, borderRadius: 24, overflow: "hidden", justifyContent: "flex-end" },
-  guestHeroImg: { borderRadius: 24 },
-  guestHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(76,29,149,0.42)" },
-  guestHeroContent: { alignItems: "center", padding: spacing.xl },
-  guestHeroIcon: { width: 64, height: 64, borderRadius: 18, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginBottom: spacing.md, ...shadowSoft },
-  guestHeroLogo: { width: 46, height: 46, borderRadius: 12 },
+  guestCard: { borderRadius: 24, overflow: "hidden", backgroundColor: colors.brandPrimary, ...shadowSoft },
+  guestCardImg: { width: "100%" },
+  guestCaption: { backgroundColor: colors.brandPrimary, alignItems: "center", paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, paddingTop: spacing["2xl"] },
+  guestHeroIcon: { width: 60, height: 60, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginTop: -50, marginBottom: spacing.md, ...shadowSoft },
+  guestHeroLogo: { width: 42, height: 42, borderRadius: 11 },
   guestHeroTitle: { fontFamily: font.bold, fontSize: 25, color: "#fff", textAlign: "center" },
   guestHeroSub: { fontFamily: font.regular, fontSize: 14, color: "rgba(255,255,255,0.92)", textAlign: "center", marginTop: spacing.sm, lineHeight: 20, maxWidth: 320 },
   guestBody: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.md },
