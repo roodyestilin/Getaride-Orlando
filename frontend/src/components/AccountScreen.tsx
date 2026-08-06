@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Avatar from "@/src/components/Avatar";
@@ -10,7 +11,6 @@ import { useAuth } from "@/src/auth";
 import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
 
 const HERO_IMG = require("@/assets/images/guest-hero.png");
-const LOGO_MARK = require("@/assets/images/logo-g.png");
 
 function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) return "New";
   const months = Math.floor((Date.now() / 1000 - createdAtSec) / (30 * 24 * 3600));
@@ -22,7 +22,6 @@ function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) ret
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
-  const { width: winW } = useWindowDimensions();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<{ total_rides: number; rating: number; created_at?: number } | null>(null);
 
@@ -34,55 +33,24 @@ export default function AccountScreen() {
   }, [user]);
 
   if (!user) {
-    const heroW = winW - spacing.lg * 2;
-    const heroH = heroW / (1486 / 1058);
     return (
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 110 }} showsVerticalScrollIndicator={false}>
-        <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg }}>
-          <View style={styles.guestCard}>
-            <Image source={HERO_IMG} style={[styles.guestCardImg, { height: heroH }]} resizeMode="cover" />
-            <View style={styles.guestCaption}>
-              <View style={styles.guestHeroIcon}>
-                <Image source={LOGO_MARK} style={styles.guestHeroLogo} resizeMode="contain" />
-              </View>
-              <Text style={styles.guestHeroTitle}>Need a ride? We got you!</Text>
-              <Text style={styles.guestHeroSub}>
-                Sign in to compare driver offers, book Orlando airport transfers, and manage your trips.
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.guestBody}>
-          <Button
-            title="Sign in / Create account"
-            onPress={() => router.push("/auth")}
-            testID="guest-signin"
-            style={{ alignSelf: "stretch" }}
-          />
-          {[
-            { icon: "pricetags", title: "Compare & pick your price", desc: "Drivers send you fares — you choose the best offer." },
-            { icon: "airplane", title: "Orlando airport transfers", desc: "Fast, reliable rides to and from MCO." },
-            { icon: "shield-checkmark", title: "Track live & pay securely", desc: "Real-time tracking with card-on-file payments." },
-          ].map((f) => (
-            <View key={f.title} style={styles.guestFeature}>
-              <View style={styles.guestFeatureIcon}>
-                <Ionicons name={f.icon as any} size={20} color={colors.brandPrimary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.guestFeatureTitle}>{f.title}</Text>
-                <Text style={styles.guestFeatureDesc}>{f.desc}</Text>
-              </View>
-            </View>
-          ))}
-
-          <Pressable testID="guest-become-driver" onPress={() => router.push("/drive-with-us")} style={styles.guestDriverLink}>
-            <Text style={styles.guestDriverText}>
-              Want to drive with Getaride? <Text style={styles.guestDriverLinkText}>Apply here</Text>
-            </Text>
+      <View style={styles.guestRoot}>
+        <Image source={HERO_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <LinearGradient
+          colors={["transparent", "rgba(24,24,27,0.25)", "rgba(24,24,27,0.92)"]}
+          locations={[0, 0.5, 1]}
+          style={styles.guestGradient}
+        />
+        <View style={[styles.guestBottom, { paddingBottom: insets.bottom + spacing.lg }]}>
+          <Text style={styles.guestTagline}>Need a ride?{"\n"}We got you.</Text>
+          <Pressable testID="guest-signin" onPress={() => router.push("/auth")} style={styles.guestCta}>
+            <Text style={styles.guestCtaText}>Sign in / Create account</Text>
+          </Pressable>
+          <Pressable testID="guest-become-driver" onPress={() => router.push("/drive-with-us")} style={styles.guestDriverLink} hitSlop={8}>
+            <Text style={styles.guestDriverText}>Want to drive? <Text style={styles.guestDriverLinkText}>Apply here</Text></Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </View>
     );
   }
 
@@ -187,20 +155,14 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border },
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
-  guestCard: { borderRadius: 24, overflow: "hidden", backgroundColor: colors.brandPrimary, ...shadowSoft },
-  guestCardImg: { width: "100%" },
-  guestCaption: { backgroundColor: colors.brandPrimary, alignItems: "center", paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, paddingTop: spacing["2xl"] },
-  guestHeroIcon: { width: 60, height: 60, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginTop: -50, marginBottom: spacing.md, ...shadowSoft },
-  guestHeroLogo: { width: 42, height: 42, borderRadius: 11 },
-  guestHeroTitle: { fontFamily: font.bold, fontSize: 25, color: "#fff", textAlign: "center" },
-  guestHeroSub: { fontFamily: font.regular, fontSize: 14, color: "rgba(255,255,255,0.92)", textAlign: "center", marginTop: spacing.sm, lineHeight: 20, maxWidth: 320 },
-  guestBody: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.md },
-  guestFeature: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md },
-  guestFeatureIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
-  guestFeatureTitle: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },
-  guestFeatureDesc: { fontFamily: font.regular, fontSize: 13, color: colors.muted, marginTop: 2, lineHeight: 18 },
-  guestDriverLink: { alignItems: "center", paddingVertical: spacing.md },
-  guestDriverText: { fontFamily: font.medium, fontSize: 14, color: colors.muted },
-  guestDriverLinkText: { fontFamily: font.bold, color: colors.brandPrimary },
+  guestRoot: { flex: 1, backgroundColor: "#000" },
+  guestGradient: { position: "absolute", left: 0, right: 0, bottom: 0, height: "70%" },
+  guestBottom: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.xl, gap: spacing.md },
+  guestTagline: { fontFamily: font.bold, fontSize: 34, lineHeight: 38, color: "#fff", marginBottom: spacing.xs },
+  guestCta: { height: 56, borderRadius: radius.pill, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  guestCtaText: { fontFamily: font.bold, fontSize: 16, color: colors.brandPrimary },
+  guestDriverLink: { alignItems: "center", paddingVertical: spacing.sm },
+  guestDriverText: { fontFamily: font.medium, fontSize: 14, color: "rgba(255,255,255,0.85)" },
+  guestDriverLinkText: { fontFamily: font.bold, color: "#fff", textDecorationLine: "underline" },
   version: { textAlign: "center", marginTop: spacing.xl, fontFamily: font.regular, fontSize: 12, color: colors.muted },
 });
