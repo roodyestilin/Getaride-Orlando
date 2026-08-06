@@ -37,7 +37,7 @@ export default function AccountScreen() {
     const heroW = winW - spacing.lg * 2;
     const heroH = heroW / (1486 / 1058);
     return (
-      <View style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 110 }} showsVerticalScrollIndicator={false}>
         <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg }}>
           <View style={styles.guestCard}>
             <Image source={HERO_IMG} style={[styles.guestCardImg, { height: heroH }]} resizeMode="cover" />
@@ -82,7 +82,7 @@ export default function AccountScreen() {
             </Text>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
     );
   }
 

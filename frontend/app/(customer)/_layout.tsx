@@ -4,8 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { colors, font } from "@/src/theme";
+import { useAuth } from "@/src/auth";
 
 export default function CustomerLayout() {
+  const { user } = useAuth();
   return (
     <Tabs
       screenListeners={{ tabPress: () => Haptics.selectionAsync().catch(() => {}) }}
@@ -40,6 +42,7 @@ export default function CustomerLayout() {
         name="inbox"
         options={{
           title: "Inbox",
+          href: user ? undefined : null,
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
         }}
       />
