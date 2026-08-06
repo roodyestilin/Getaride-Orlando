@@ -6,6 +6,9 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 
 import { colors, font, radius, spacing, shadow } from "@/src/theme";
+import { useIsDesktop } from "@/src/hooks/useResponsive";
+import DesktopChrome from "@/src/components/desktop/DesktopChrome";
+import DesktopDrivers from "@/src/components/desktop/DesktopDrivers";
 
 const BENEFITS: { icon: any; title: string; desc: string }[] = [
   { icon: "cash-outline", title: "Set your own fare", desc: "See every trip's details up front and accept the suggested fare or submit your own bid." },
@@ -31,11 +34,21 @@ const STEPS: { n: string; title: string; desc: string }[] = [
 
 export default function DriveWithUs() {
   const insets = useSafeAreaInsets();
+  const isDesktop = useIsDesktop();
 
   const startApplication = () => {
     Haptics.selectionAsync().catch(() => {});
     router.replace("/auth?role=driver");
   };
+
+  // Desktop users get the Lyft-style marketing "For Drivers" page.
+  if (isDesktop) {
+    return (
+      <DesktopChrome active="drivers">
+        <DesktopDrivers />
+      </DesktopChrome>
+    );
+  }
 
   return (
     <View style={styles.container}>
