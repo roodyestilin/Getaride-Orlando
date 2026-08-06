@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ImageBackground } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -9,8 +9,9 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
 
-function memberDuration(createdAtSec?: number): string {
-  if (!createdAtSec) return "New";
+const AIRPORT_IMG = "https://images.pexels.com/photos/34405177/pexels-photo-34405177.jpeg?auto=compress&cs=tinysrgb&w=1000";
+
+function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) return "New";
   const months = Math.floor((Date.now() / 1000 - createdAtSec) / (30 * 24 * 3600));
   if (months < 1) return "New";
   if (months < 12) return `${months} mo`;
@@ -33,14 +34,24 @@ export default function AccountScreen() {
   if (!user) {
     return (
       <View style={styles.container}>
-        <View style={[styles.guestHero, { paddingTop: insets.top + spacing["2xl"] }]}>
-          <View style={styles.guestHeroIcon}>
-            <Ionicons name="car-sport" size={40} color="#fff" />
-          </View>
-          <Text style={styles.guestHeroTitle}>Need a ride? We got you!</Text>
-          <Text style={styles.guestHeroSub}>
-            Sign in to compare driver offers, book Orlando airport transfers, and manage your trips.
-          </Text>
+        <View style={{ paddingTop: insets.top + spacing.md, paddingHorizontal: spacing.lg }}>
+          <ImageBackground
+            source={{ uri: AIRPORT_IMG }}
+            style={styles.guestHero}
+            imageStyle={styles.guestHeroImg}
+            resizeMode="cover"
+          >
+            <View style={styles.guestHeroOverlay} />
+            <View style={styles.guestHeroContent}>
+              <View style={styles.guestHeroIcon}>
+                <Ionicons name="car-sport" size={34} color="#fff" />
+              </View>
+              <Text style={styles.guestHeroTitle}>Need a ride? We got you!</Text>
+              <Text style={styles.guestHeroSub}>
+                Sign in to compare driver offers, book Orlando airport transfers, and manage your trips.
+              </Text>
+            </View>
+          </ImageBackground>
         </View>
 
         <View style={styles.guestBody}>
@@ -177,10 +188,13 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.border },
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
-  guestHero: { backgroundColor: colors.brandPrimary, alignItems: "center", paddingHorizontal: spacing.xl, paddingBottom: spacing["2xl"], borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  guestHeroIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center", marginBottom: spacing.lg },
-  guestHeroTitle: { fontFamily: font.bold, fontSize: 26, color: "#fff", textAlign: "center" },
-  guestHeroSub: { fontFamily: font.regular, fontSize: 14.5, color: "rgba(255,255,255,0.9)", textAlign: "center", marginTop: spacing.sm, lineHeight: 21, maxWidth: 320 },
+  guestHero: { minHeight: 230, borderRadius: 24, overflow: "hidden", justifyContent: "flex-end" },
+  guestHeroImg: { borderRadius: 24 },
+  guestHeroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(76,29,149,0.55)" },
+  guestHeroContent: { alignItems: "center", padding: spacing.xl },
+  guestHeroIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
+  guestHeroTitle: { fontFamily: font.bold, fontSize: 25, color: "#fff", textAlign: "center" },
+  guestHeroSub: { fontFamily: font.regular, fontSize: 14, color: "rgba(255,255,255,0.92)", textAlign: "center", marginTop: spacing.sm, lineHeight: 20, maxWidth: 320 },
   guestBody: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.md },
   guestFeature: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md },
   guestFeatureIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
