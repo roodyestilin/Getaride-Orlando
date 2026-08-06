@@ -38,3 +38,35 @@ export const VEHICLE_YEARS: string[] = Array.from(
   (_, i) => String(CURRENT_YEAR - i),
 );
 
+// ── Vehicle-class auto-categorization (mirrors backend classify_vehicle) ─────
+export const VEHICLE_CLASS_INFO: Record<string, { label: string; maxPax: number; maxBags: number }> = {
+  economy: { label: "Economy", maxPax: 3, maxBags: 3 },
+  suv: { label: "SUV", maxPax: 4, maxBags: 4 },
+  executive_suv: { label: "Executive SUV", maxPax: 6, maxBags: 6 },
+};
+
+const EXEC_KEYWORDS = [
+  "suburban", "tahoe", "yukon", "escalade", "expedition", "navigator", "sequoia",
+  "highlander", "pilot", "telluride", "palisade", "atlas", "traverse", "explorer",
+  "pathfinder", "durango", "qx60", "qx80", "gls", "gl450", "x7", "odyssey", "sienna",
+  "pacifica", "carnival", "cx-9", "cx9", "ascent", "mdx", "enclave", "acadia",
+  "wagoneer", "armada", "grand caravan", "grand cherokee",
+];
+const SUV_KEYWORDS = [
+  "escape", "cr-v", "crv", "rav4", "rav-4", "rogue", "equinox", "tucson", "santa fe",
+  "sportage", "sorento", "outback", "forester", "cherokee", "compass", "edge", "blazer",
+  "bronco", "4runner", "murano", "tiguan", "cx-5", "cx5", "cx-30", "cx30", "x3", "x5",
+  "q5", "q7", "q3", "glc", "gle", "gla", "rdx", "venza", "kona", "seltos", "trailblazer",
+  "hr-v", "hrv", "corolla cross", "nx", "rx", "ux", "gx", "lx", "crosstrek", "encore",
+  "envision", "terrain", "eclipse cross", "outlander", "id.4", "ioniq 5", "mach-e",
+  "xt4", "xt5", "qx50", "xc40", "xc60", "xc90", "x1", "renegade", "wrangler", "niro", "soul",
+];
+
+export function classifyVehicle(make?: string, model?: string): "economy" | "suv" | "executive_suv" {
+  const text = `${make || ""} ${model || ""}`.toLowerCase();
+  if (EXEC_KEYWORDS.some((k) => text.includes(k))) return "executive_suv";
+  if (SUV_KEYWORDS.some((k) => text.includes(k))) return "suv";
+  return "economy";
+}
+
+

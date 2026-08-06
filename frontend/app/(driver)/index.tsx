@@ -66,6 +66,18 @@ function RequestPopup({ req, secsLeft, bottom, onSkip, onBid }: any) {
           <Ionicons name="speedometer-outline" size={13} color={colors.brandPrimary} />
           <Text style={styles.metaChipText}>{req.distance_miles} mi</Text>
         </View>
+        {req.required_class_label ? (
+          <View style={styles.metaChip}>
+            <Ionicons name="car-sport" size={13} color={colors.brandPrimary} />
+            <Text style={styles.metaChipText}>{req.required_class_label}</Text>
+          </View>
+        ) : null}
+        {typeof req.passengers === "number" ? (
+          <View style={styles.metaChip}>
+            <Ionicons name="people" size={13} color={colors.brandPrimary} />
+            <Text style={styles.metaChipText}>{req.passengers} pax · {req.bags ?? 0} bag{req.bags === 1 ? "" : "s"}</Text>
+          </View>
+        ) : null}
       </View>
       <View style={styles.popupActions}>
         <Pressable testID={`skip-${req.id}`} onPress={onSkip} style={styles.skipBtn}>

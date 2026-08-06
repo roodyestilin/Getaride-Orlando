@@ -55,12 +55,91 @@ logger = logging.getLogger("getaride")
 ORLANDO = {"lat": 28.5384, "lng": -81.3789}
 
 SIM_DRIVERS = [
-    {"name": "Marcus Bell", "photo": "https://images.pexels.com/photos/10816007/pexels-photo-10816007.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.9, "vehicle": "Tesla Model 3", "color": "White", "trips": 1840},
-    {"name": "Aisha Reed", "photo": "https://images.pexels.com/photos/31869537/pexels-photo-31869537.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.8, "vehicle": "Toyota Camry", "color": "Silver", "trips": 932},
-    {"name": "Diego Santos", "photo": "https://images.pexels.com/photos/14589344/pexels-photo-14589344.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.7, "vehicle": "Honda Accord", "color": "Black", "trips": 2210},
-    {"name": "Tasha Moore", "photo": "https://images.pexels.com/photos/31869537/pexels-photo-31869537.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 5.0, "vehicle": "Hyundai Sonata", "color": "Blue", "trips": 410},
-    {"name": "Liam Walsh", "photo": "https://images.pexels.com/photos/10816007/pexels-photo-10816007.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.6, "vehicle": "Ford Escape", "color": "Gray", "trips": 1325},
+    {"name": "Marcus Bell", "photo": "https://images.pexels.com/photos/10816007/pexels-photo-10816007.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.9, "vehicle": "Tesla Model 3", "color": "White", "trips": 1840, "vehicle_class": "economy"},
+    {"name": "Aisha Reed", "photo": "https://images.pexels.com/photos/31869537/pexels-photo-31869537.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.8, "vehicle": "Toyota Camry", "color": "Silver", "trips": 932, "vehicle_class": "economy"},
+    {"name": "Diego Santos", "photo": "https://images.pexels.com/photos/14589344/pexels-photo-14589344.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.7, "vehicle": "Honda Accord", "color": "Black", "trips": 2210, "vehicle_class": "economy"},
+    {"name": "Tasha Moore", "photo": "https://images.pexels.com/photos/31869537/pexels-photo-31869537.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 5.0, "vehicle": "Hyundai Sonata", "color": "Blue", "trips": 410, "vehicle_class": "economy"},
+    {"name": "Liam Walsh", "photo": "https://images.pexels.com/photos/10816007/pexels-photo-10816007.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.6, "vehicle": "Ford Escape", "color": "Gray", "trips": 1325, "vehicle_class": "suv"},
+    {"name": "Nina Patel", "photo": "https://images.pexels.com/photos/31869537/pexels-photo-31869537.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.9, "vehicle": "Honda CR-V", "color": "Red", "trips": 1560, "vehicle_class": "suv"},
+    {"name": "Grace Kim", "photo": "https://images.pexels.com/photos/31869537/pexels-photo-31869537.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.8, "vehicle": "Toyota Highlander", "color": "White", "trips": 2040, "vehicle_class": "executive_suv"},
+    {"name": "Andre Cole", "photo": "https://images.pexels.com/photos/10816007/pexels-photo-10816007.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 4.7, "vehicle": "Chevrolet Suburban", "color": "Black", "trips": 980, "vehicle_class": "executive_suv"},
+    {"name": "Omar Diaz", "photo": "https://images.pexels.com/photos/14589344/pexels-photo-14589344.jpeg?auto=compress&cs=tinysrgb&w=300", "rating": 5.0, "vehicle": "Cadillac Escalade", "color": "Black", "trips": 1710, "vehicle_class": "executive_suv"},
 ]
+
+# ── Vehicle classes: capacity, fare multiplier & display ─────────────────────
+VEHICLE_CLASSES = {
+    "economy":       {"label": "Economy",       "max_pax": 3, "max_bags": 3, "rank": 1, "mult": 1.0},
+    "suv":           {"label": "SUV",           "max_pax": 4, "max_bags": 4, "rank": 2, "mult": 1.35},
+    "executive_suv": {"label": "Executive SUV", "max_pax": 6, "max_bags": 6, "rank": 3, "mult": 1.8},
+}
+CLASS_ORDER = ["economy", "suv", "executive_suv"]
+
+# 3-row / large SUVs, vans & luxury people-movers → Executive SUV.
+_EXEC_KEYWORDS = [
+    "suburban", "tahoe", "yukon", "escalade", "expedition", "navigator", "sequoia",
+    "highlander", "pilot", "telluride", "palisade", "atlas", "traverse", "explorer",
+    "pathfinder", "durango", "qx60", "qx80", "gls", "gl450", "x7", "odyssey", "sienna",
+    "pacifica", "carnival", "cx-9", "cx9", "ascent", "mdx", "enclave", "acadia",
+    "wagoneer", "armada", "sprinter", "transit", "metris", "grand caravan",
+]
+# 2-row crossovers / SUVs → SUV.
+_SUV_KEYWORDS = [
+    "escape", "cr-v", "crv", "rav4", "rav-4", "rogue", "equinox", "tucson", "santa fe",
+    "sportage", "sorento", "outback", "forester", "cherokee", "compass", "edge", "blazer",
+    "bronco", "4runner", "murano", "tiguan", "cx-5", "cx5", "cx-30", "cx30", "x3", "x5",
+    "q5", "q7", "glc", "gle", "rdx", "venza", "kona", "seltos", "trailblazer", "hr-v",
+    "hrv", "corolla cross", "nx", "rx", "gx", "lx", "crosstrek", "encore", "envision",
+    "terrain", "eclipse cross", "outlander", "cx-50", "id.4", "ioniq 5", "ev6", "mach-e",
+]
+
+
+def classify_vehicle(make: str, model: str) -> str:
+    text = f"{make or ''} {model or ''}".lower()
+    for kw in _EXEC_KEYWORDS:
+        if kw in text:
+            return "executive_suv"
+    for kw in _SUV_KEYWORDS:
+        if kw in text:
+            return "suv"
+    return "economy"
+
+
+def required_class(pax: int, bags: int) -> str:
+    for key in CLASS_ORDER:
+        c = VEHICLE_CLASSES[key]
+        if pax <= c["max_pax"] and bags <= c["max_bags"]:
+            return key
+    return "executive_suv"
+
+
+def class_can_serve(driver_class: str, req_class: str) -> bool:
+    dc = VEHICLE_CLASSES.get(driver_class or "economy", VEHICLE_CLASSES["economy"])
+    return dc["rank"] >= VEHICLE_CLASSES.get(req_class or "economy", VEHICLE_CLASSES["economy"])["rank"]
+
+
+def get_driver_class(u: dict) -> str:
+    c = u.get("vehicle_class")
+    if c in VEHICLE_CLASSES:
+        return c
+    return classify_vehicle(u.get("vehicle_make"), u.get("vehicle_model"))
+
+
+def class_info(key: str) -> dict:
+    c = VEHICLE_CLASSES.get(key or "economy", VEHICLE_CLASSES["economy"])
+    return {"vehicle_class": key or "economy", "class_label": c["label"], "max_pax": c["max_pax"], "max_bags": c["max_bags"]}
+
+
+def apply_class_pricing(fare: dict, key: str) -> dict:
+    mult = VEHICLE_CLASSES.get(key or "economy", VEHICLE_CLASSES["economy"])["mult"]
+    if mult == 1.0:
+        return fare
+    scaled = dict(fare)
+    scaled["recommended_fare"] = max(7.0, round_half(fare["recommended_fare"] * mult))
+    scaled["fare_min"] = round_half(fare["fare_min"] * mult)
+    scaled["fare_max"] = round_half(fare["fare_max"] * mult)
+    return scaled
+
+
 
 SIM_CUSTOMERS = ["Jordan P.", "Emily R.", "Carlos M.", "Nina S.", "Derek T.", "Olivia W."]
 
@@ -188,6 +267,8 @@ def public_user(u: dict) -> dict:
         "vehicle_make": u.get("vehicle_make"),
         "vehicle_model": u.get("vehicle_model"),
         "vehicle_year": u.get("vehicle_year"),
+        "vehicle_class": get_driver_class(u) if u.get("role") == "driver" else None,
+        "vehicle_class_label": VEHICLE_CLASSES[get_driver_class(u)]["label"] if u.get("role") == "driver" else None,
         "license_number": u.get("license_number"),
         "ssn_last4": u.get("ssn_last4"),
         "agreed_terms": u.get("agreed_terms"),
@@ -316,6 +397,8 @@ class RideReq(BaseModel):
     when: str = "now"  # now | scheduled
     scheduled_time: Optional[str] = None
     airport_info: Optional[AirportInfo] = None
+    passengers: int = 1
+    bags: int = 0
 
 
 class SelectReq(BaseModel):
@@ -429,6 +512,7 @@ async def register(req: RegisterReq):
             raise HTTPException(400, "You must accept the Driver Agreement to continue.")
     if not vehicle and is_driver and (req.vehicle_make or req.vehicle_model):
         vehicle = " ".join([p for p in [req.vehicle_year, req.vehicle_make, req.vehicle_model] if p]).strip()
+    veh_class = classify_vehicle(req.vehicle_make, req.vehicle_model) if is_driver else None
     user = {
         "id": str(uuid.uuid4()),
         "email": req.email.lower(),
@@ -447,6 +531,7 @@ async def register(req: RegisterReq):
         "vehicle_make": req.vehicle_make if is_driver else None,
         "vehicle_model": req.vehicle_model if is_driver else None,
         "vehicle_year": req.vehicle_year if is_driver else None,
+        "vehicle_class": veh_class,
         "license_number": req.license_number if is_driver else None,
         "ssn_last4": (req.ssn or "")[-4:] if is_driver else None,
         "agreed_terms": bool(req.agreed_terms) if is_driver else None,
@@ -515,18 +600,23 @@ async def update_me(req: UpdateMeReq, user=Depends(get_current_user)):
 def build_offers(ride: dict) -> List[dict]:
     rec = ride["recommended_fare"]
     pickup = ride["pickup"]
-    drivers = random.sample(SIM_DRIVERS, k=min(5, len(SIM_DRIVERS)))
+    req_class = ride.get("required_class", "economy")
+    eligible = [d for d in SIM_DRIVERS if class_can_serve(d.get("vehicle_class", "economy"), req_class)]
+    if not eligible:
+        eligible = SIM_DRIVERS
+    drivers = random.sample(eligible, k=min(5, len(eligible)))
     offers = []
     for i, d in enumerate(drivers):
         # driver starts somewhere near pickup
         start = {"lat": pickup["lat"] + random.uniform(-0.03, 0.03),
                  "lng": pickup["lng"] + random.uniform(-0.03, 0.03)}
-        fare = round_half(rec * random.uniform(0.9, 1.38))
+        fare = round_half(rec * random.uniform(0.9, 1.25))
         eta = random.randint(2, 9)
         offers.append({
             "id": str(uuid.uuid4()),
             "ride_id": ride["id"],
-            "driver": {**d, "name": short_name(d["name"]), "id": "sim_" + str(uuid.uuid4())[:8], "start": start},
+            "driver": {**d, "name": short_name(d["name"]), "id": "sim_" + str(uuid.uuid4())[:8], "start": start,
+                       **class_info(d.get("vehicle_class", "economy"))},
             "fare": fare,
             "eta_minutes": eta,
             "reveal_at": now_ts() + i * 1.6,  # progressive reveal
@@ -544,6 +634,11 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
     if (haversine_miles(pu, MCO) > 2.0 and haversine_miles(de, MCO) > 2.0):
         raise HTTPException(400, "All trips must start or end at Orlando International Airport (MCO).")
     fare = compute_fare(pu, de, [s.dict() for s in req.stops])
+    # Vehicle-class matching: pick the smallest class that fits the party, price by class.
+    pax = max(1, min(6, int(req.passengers or 1)))
+    bags = max(0, min(6, int(req.bags if req.bags is not None else (req.airport_info.bags if req.airport_info else 0))))
+    req_class = required_class(pax, bags)
+    fare = apply_class_pricing(fare, req_class)
     scheduled_ts = None
     if req.when == "scheduled":
         if not req.scheduled_time:
@@ -573,6 +668,10 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "scheduled_time": req.scheduled_time,
         "scheduled_ts": scheduled_ts,
         "airport_info": req.airport_info.dict() if req.airport_info else None,
+        "passengers": pax,
+        "bags": bags,
+        "required_class": req_class,
+        "required_class_label": VEHICLE_CLASSES[req_class]["label"],
         "status": "scheduled" if req.when == "scheduled" else "searching",
         "assigned_driver": None,
         "selected_offer_id": None,
@@ -818,6 +917,10 @@ async def ensure_driver_requests():
     for _ in range(max(0, 5 - open_count)):
         pickup, dest = random.sample(ORLANDO_PLACES, 2)
         fare = compute_fare(pickup, dest, [])
+        pax = random.randint(1, 6)
+        bags = random.randint(0, 6)
+        req_class = required_class(pax, bags)
+        fare = apply_class_pricing(fare, req_class)
         ride = {
             "id": str(uuid.uuid4()),
             "source": "sim",
@@ -829,6 +932,10 @@ async def ensure_driver_requests():
             "stops": [],
             "when": "now",
             "scheduled_time": None,
+            "passengers": pax,
+            "bags": bags,
+            "required_class": req_class,
+            "required_class_label": VEHICLE_CLASSES[req_class]["label"],
             "status": "searching",
             "assigned_driver": None,
             "driver_bid": None,
@@ -871,7 +978,10 @@ async def driver_requests(user=Depends(get_current_user)):
     await ensure_driver_requests()
     cursor = db.rides.find({"source": "sim", "status": "searching", "driver_bid": None},
                            {"_id": 0}).sort("created_at", -1)
-    rides = await cursor.to_list(10)
+    rides = await cursor.to_list(20)
+    # Only surface rides this driver's vehicle class can actually serve.
+    dclass = get_driver_class(user)
+    rides = [r for r in rides if class_can_serve(dclass, r.get("required_class", "economy"))][:10]
     return {"requests": rides}
 
 

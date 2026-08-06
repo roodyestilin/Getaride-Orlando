@@ -63,6 +63,7 @@ export default function AccountScreen() {
     ...(user.role === "driver"
       ? [
           { icon: "car", label: "Vehicle", value: user.vehicle || "—" },
+          { icon: "car-sport", label: "Category", value: user.vehicle_class_label || "—" },
           { icon: "pricetag", label: "Plate", value: user.plate || "—" },
         ]
       : []),

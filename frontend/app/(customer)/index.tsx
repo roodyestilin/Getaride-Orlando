@@ -55,6 +55,7 @@ export default function CustomerHome() {
   const [airline, setAirline] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
   const [bags, setBags] = useState(1);
+  const [passengers, setPassengers] = useState(1);
   const [terminal, setTerminal] = useState("");
   const [baggageClaim, setBaggageClaim] = useState("");
   const [airportModal, setAirportModal] = useState(false);
@@ -92,6 +93,7 @@ export default function CustomerHome() {
         if (p.airline) setAirline(p.airline);
         if (p.flightNumber) setFlightNumber(p.flightNumber);
         if (typeof p.bags === "number") setBags(p.bags);
+        if (typeof p.passengers === "number") setPassengers(p.passengers);
         if (p.terminal) setTerminal(p.terminal);
         if (p.baggageClaim) setBaggageClaim(p.baggageClaim);
       } catch {}
@@ -233,7 +235,7 @@ export default function CustomerHome() {
     // Guests: save the selection and send them to log in / sign up first.
     if (!user) {
       await storage.setItem(PENDING_RIDE_KEY, JSON.stringify({
-        pickup, destination, stops, mode, scheduledAt: scheduledAt?.toISOString() || null, airline, flightNumber, bags, terminal, baggageClaim,
+        pickup, destination, stops, mode, scheduledAt: scheduledAt?.toISOString() || null, airline, flightNumber, bags, passengers, terminal, baggageClaim,
       }));
       router.push("/auth");
       return;
@@ -250,6 +252,8 @@ export default function CustomerHome() {
           stops,
           when: mode,
           scheduled_time: mode === "scheduled" && scheduledAt ? scheduledAt.toISOString() : null,
+          passengers,
+          bags,
           airport_info: {
             direction: fromAirport ? "from" : "to",
             airline,
@@ -382,8 +386,8 @@ export default function CustomerHome() {
               <Text style={styles.airportSummaryTitle}>{fromAirport ? "Airport pickup details" : "Airport drop-off details"}</Text>
               <Text style={styles.airportSummarySub}>
                 {airportReady
-                  ? `${airline}${flightNumber ? ` · ${flightNumber}` : ""}${terminal ? ` · Term ${terminal}` : ""}${fromAirport && baggageClaim ? ` · Claim ${baggageClaim}` : ""} · ${bags} bag${bags === 1 ? "" : "s"}`
-                  : "Tap to add flight & bag details"}
+                  ? `${passengers} pax · ${bags} bag${bags === 1 ? "" : "s"} · ${airline}${terminal ? ` · Term ${terminal}` : ""}${fromAirport && baggageClaim ? ` · Claim ${baggageClaim}` : ""}`
+                  : "Tap to add flight, passengers & bags"}
               </Text>
             </View>
             <Ionicons name={airportReady ? "checkmark-circle" : "chevron-forward"} size={20} color={airportReady ? colors.success : colors.muted} />
@@ -432,6 +436,8 @@ export default function CustomerHome() {
         setFlightNumber={setFlightNumber}
         bags={bags}
         setBags={setBags}
+        passengers={passengers}
+        setPassengers={setPassengers}
         terminal={terminal}
         setTerminal={setTerminal}
         baggageClaim={baggageClaim}
@@ -592,10 +598,16 @@ function LocationRow({ icon, iconColor, label, onPress, placeholder, trailing, t
   );
 }
 
-function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, setAirline, flightNumber, setFlightNumber, bags, setBags, terminal, setTerminal, baggageClaim, setBaggageClaim, onClose, onSubmit, insets }: any) {
+function classForParty(pax: number, bags: number): string {
+  if (pax <= 3 && bags <= 3) return "Economy · up to 3 riders, 3 bags";
+  if (pax <= 4 && bags <= 4) return "SUV · up to 4 riders, 4 bags";
+  return "Executive SUV · up to 6 riders, 6 bags";
+}
+
+function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, setAirline, flightNumber, setFlightNumber, bags, setBags, passengers, setPassengers, terminal, setTerminal, baggageClaim, setBaggageClaim, onClose, onSubmit, insets }: any) {
   const steps: string[] = fromAirport
-    ? ["flight", "terminal", "baggage", "airline", "bags"]
-    : ["airline", "terminal", "bags"];
+    ? ["flight", "terminal", "baggage", "airline", "party"]
+    : ["airline", "terminal", "party"];
   const key = steps[Math.min(step, steps.length - 1)];
   const isLast = step === steps.length - 1;
   const valid =
@@ -610,7 +622,7 @@ function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, set
     terminal: "Which terminal?",
     baggage: "Baggage claim number",
     airline: "Which airline?",
-    bags: "How many bags?",
+    party: "Passengers & bags",
   };
   const subtitles: Record<string, string> = {
     flight: "We'll share this with your driver so they can track your arrival.",
@@ -619,7 +631,7 @@ function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, set
       : "MCO has terminals A, B and C — pick your departure terminal.",
     baggage: "The carousel number so your driver knows where to meet you.",
     airline: "Helps your driver find the right terminal.",
-    bags: "So your driver brings enough trunk space.",
+    party: "We'll match you with a vehicle that fits your group.",
   };
 
   return (
@@ -691,14 +703,41 @@ function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, set
               />
             </View>
           ) : (
-            <View style={styles.modalBagsRow}>
-              <Pressable testID="bags-minus" onPress={() => setBags((b: number) => Math.max(0, b - 1))} style={styles.bagsBtn}>
-                <Ionicons name="remove" size={22} color={colors.onSurface} />
-              </Pressable>
-              <Text style={styles.modalBagsCount} testID="bags-count">{bags}</Text>
-              <Pressable testID="bags-plus" onPress={() => setBags((b: number) => Math.min(20, b + 1))} style={styles.bagsBtn}>
-                <Ionicons name="add" size={22} color={colors.onSurface} />
-              </Pressable>
+            <View style={styles.partyWrap}>
+              <View style={styles.partyRow}>
+                <View style={styles.partyLabelWrap}>
+                  <Ionicons name="people" size={18} color={colors.brandPrimary} />
+                  <Text style={styles.partyLabel}>Passengers</Text>
+                </View>
+                <View style={styles.modalBagsRow}>
+                  <Pressable testID="pax-minus" onPress={() => setPassengers((p: number) => Math.max(1, p - 1))} style={styles.bagsBtn}>
+                    <Ionicons name="remove" size={22} color={colors.onSurface} />
+                  </Pressable>
+                  <Text style={styles.modalBagsCount} testID="pax-count">{passengers}</Text>
+                  <Pressable testID="pax-plus" onPress={() => setPassengers((p: number) => Math.min(6, p + 1))} style={styles.bagsBtn}>
+                    <Ionicons name="add" size={22} color={colors.onSurface} />
+                  </Pressable>
+                </View>
+              </View>
+              <View style={styles.partyRow}>
+                <View style={styles.partyLabelWrap}>
+                  <Ionicons name="bag-handle" size={18} color={colors.brandPrimary} />
+                  <Text style={styles.partyLabel}>Bags</Text>
+                </View>
+                <View style={styles.modalBagsRow}>
+                  <Pressable testID="bags-minus" onPress={() => setBags((b: number) => Math.max(0, b - 1))} style={styles.bagsBtn}>
+                    <Ionicons name="remove" size={22} color={colors.onSurface} />
+                  </Pressable>
+                  <Text style={styles.modalBagsCount} testID="bags-count">{bags}</Text>
+                  <Pressable testID="bags-plus" onPress={() => setBags((b: number) => Math.min(6, b + 1))} style={styles.bagsBtn}>
+                    <Ionicons name="add" size={22} color={colors.onSurface} />
+                  </Pressable>
+                </View>
+              </View>
+              <View style={styles.classHint} testID="class-hint">
+                <Ionicons name="car-sport" size={16} color={colors.brandPrimary} />
+                <Text style={styles.classHintText}>{classForParty(passengers, bags)}</Text>
+              </View>
             </View>
           )}
         </View>
@@ -828,6 +867,12 @@ const styles = StyleSheet.create({
   modalSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, marginBottom: spacing.xl, lineHeight: 20 },
   modalInput: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.lg, height: 56, fontFamily: font.semibold, fontSize: 18, color: colors.onSurface, backgroundColor: colors.surface },
   modalBagsRow: { flexDirection: "row", alignItems: "center", gap: spacing.xl },
+  partyWrap: { alignSelf: "stretch", gap: spacing.lg, marginTop: spacing.md },
+  partyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  partyLabelWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  partyLabel: { fontFamily: font.semibold, fontSize: 16, color: colors.onSurface },
+  classHint: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginTop: spacing.xs },
+  classHintText: { fontFamily: font.semibold, fontSize: 13.5, color: colors.brandPrimary },
   modalBagsCount: { fontFamily: font.bold, fontSize: 28, color: colors.onSurface, minWidth: 40, textAlign: "center" },
   terminalRow: { flexDirection: "row", gap: spacing.md },
   terminalBtn: { flex: 1, height: 72, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },

@@ -18,7 +18,7 @@ import Logo from "@/src/components/Logo";
 import Button from "@/src/components/Button";
 import SelectField from "@/src/components/SelectField";
 import DocumentField, { DocFile } from "@/src/components/DocumentField";
-import { MAKE_LIST, VEHICLE_MAKES, VEHICLE_YEARS } from "@/src/data/vehicles";
+import { MAKE_LIST, VEHICLE_MAKES, VEHICLE_YEARS, classifyVehicle, VEHICLE_CLASS_INFO } from "@/src/data/vehicles";
 import { DRIVER_AGREEMENT_SECTIONS, DRIVER_AGREEMENT_VERSION } from "@/src/data/driverAgreement";
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, spacing } from "@/src/theme";
@@ -324,7 +324,21 @@ export default function AuthScreen() {
                 </View>
               </View>
               <Field label="License plate" testID="plate-input" value={plate} onChangeText={setPlate} placeholder="FL 123AB" autoCapitalize="characters" />
-              <Text style={styles.hintText}>Vehicles must be model year 2010 or newer.</Text>
+              {vehicleModel ? (
+                <View style={styles.classBadge} testID="detected-class">
+                  <Ionicons name="car-sport" size={18} color={colors.brandPrimary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.classBadgeLabel}>Vehicle category</Text>
+                    <Text style={styles.classBadgeValue}>
+                      {VEHICLE_CLASS_INFO[classifyVehicle(vehicleMake, vehicleModel)].label}
+                      {" · up to "}
+                      {VEHICLE_CLASS_INFO[classifyVehicle(vehicleMake, vehicleModel)].maxPax} riders,
+                      {" "}{VEHICLE_CLASS_INFO[classifyVehicle(vehicleMake, vehicleModel)].maxBags} bags
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              <Text style={styles.hintText}>Vehicles must be model year 2010 or newer. Your category is set automatically from your make & model.</Text>
             </>
           )}
 
@@ -477,6 +491,9 @@ const styles = StyleSheet.create({
   reviewNote: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md },
   reviewNoteText: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.brandPrimary, lineHeight: 18 },
   hintText: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: -spacing.xs },
+  classBadge: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md },
+  classBadgeLabel: { fontFamily: font.medium, fontSize: 11, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.4 },
+  classBadgeValue: { fontFamily: font.bold, fontSize: 14.5, color: colors.onSurface, marginTop: 1 },
   agreementBox: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.lg, backgroundColor: colors.surfaceSecondary },
   agreementHeading: { fontFamily: font.bold, fontSize: 16, color: colors.onSurface },
   agreementVersion: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 2 },

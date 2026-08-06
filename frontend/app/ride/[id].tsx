@@ -514,6 +514,15 @@ function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCanc
         </View>
       </View>
 
+      {ride.required_class_label ? (
+        <View style={styles.classMatchBanner} testID="ride-class">
+          <Ionicons name="car-sport" size={14} color={colors.brandPrimary} />
+          <Text style={styles.classMatchText}>
+            {ride.required_class_label} · {ride.passengers} rider{ride.passengers === 1 ? "" : "s"}, {ride.bags} bag{ride.bags === 1 ? "" : "s"}
+          </Text>
+        </View>
+      ) : null}
+
       <Text style={styles.compareTitle}>Compare driver offers</Text>
 
       {acceptError ? (
@@ -557,6 +566,9 @@ function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCanc
               <View style={{ flex: 1 }}>
                 <Text style={styles.driverName}>{o.driver.name}</Text>
                 <Text style={styles.vehicle}>{o.driver.color} {o.driver.vehicle}</Text>
+                {o.driver.class_label ? (
+                  <View style={styles.classChip}><Text style={styles.classChipText}>{o.driver.class_label}</Text></View>
+                ) : null}
                 <View style={styles.metaRow}>
                   <Ionicons name="star" size={12} color={colors.warning} />
                   <Text style={styles.metaText}>{o.driver.rating.toFixed(1)}</Text>
@@ -836,6 +848,10 @@ const styles = StyleSheet.create({
   liveBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandTertiary, paddingHorizontal: spacing.md, height: 32, borderRadius: radius.pill },
   liveText: { fontFamily: font.semibold, fontSize: 12, color: colors.brandPrimary },
   compareTitle: { fontFamily: font.bold, fontSize: 16, color: colors.onSurface, marginBottom: spacing.md },
+  classMatchBanner: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md },
+  classMatchText: { fontFamily: font.semibold, fontSize: 13, color: colors.brandPrimary },
+  classChip: { alignSelf: "flex-start", backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2, marginTop: 3 },
+  classChipText: { fontFamily: font.bold, fontSize: 10.5, color: colors.brandPrimary },
   routeBox: { flexDirection: "row", gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   routeCol: { alignItems: "center", paddingTop: 3 },
   routeLine: { width: 2, flex: 1, minHeight: 16, backgroundColor: colors.border, marginVertical: 3 },
