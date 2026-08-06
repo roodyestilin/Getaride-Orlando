@@ -738,12 +738,9 @@ function CompletedSheet({ ride, track, insets, tip, onTip, tipFeedback, rideId }
     <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
       <View style={styles.handle} />
       <View style={styles.completeIcon}>
-        <Ionicons name="checkmark-circle" size={56} color={colors.success} />
+        <Avatar uri={ride.assigned_driver?.photo} size={72} />
       </View>
       <Text style={styles.completeTitle}>Trip completed</Text>
-      <Text style={styles.completeFare}>${fare.toFixed(2)}</Text>
-      {tip > 0 ? <Text style={styles.completeTip}>+ ${Number(tip).toFixed(2)} tip · Total ${total.toFixed(2)}</Text> : null}
-      <Text style={styles.completeSub}>{ride.pickup.label} → {ride.destination.label}</Text>
 
       {!track?.rider_rating ? (
         <RatingCard rideId={rideId} targetName={ride.assigned_driver?.name} targetLabel="driver" />
@@ -751,12 +748,6 @@ function CompletedSheet({ ride, track, insets, tip, onTip, tipFeedback, rideId }
 
       {STRIPE_CARD_FLOW ? (
         <>
-          <View style={[styles.paidBox, !paid && { backgroundColor: colors.surfaceSecondary }]} testID="payment-paid">
-            <Ionicons name={paid ? "card" : "time"} size={18} color={paid ? colors.success : colors.muted} />
-            <Text style={[styles.paidText, !paid && { color: colors.muted }]}>
-              {paid ? `Charged $${fare.toFixed(2)} to your card on file` : "Finalizing fare charge…"}
-            </Text>
-          </View>
           <TipSection tip={tip} onTip={onTip} />
           {tipFeedback ? (
             <Text style={tipFeedback.ok ? styles.tipOk : styles.payErr}>{tipFeedback.msg}</Text>
