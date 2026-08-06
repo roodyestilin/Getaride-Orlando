@@ -54,6 +54,12 @@ export default function AccountScreen() {
         </View>
 
         <View style={styles.guestBody}>
+          <Button
+            title="Sign in / Create account"
+            onPress={() => router.push("/auth")}
+            testID="guest-signin"
+            style={{ alignSelf: "stretch" }}
+          />
           {[
             { icon: "pricetags", title: "Compare & pick your price", desc: "Drivers send you fares — you choose the best offer." },
             { icon: "airplane", title: "Orlando airport transfers", desc: "Fast, reliable rides to and from MCO." },
@@ -70,12 +76,6 @@ export default function AccountScreen() {
             </View>
           ))}
 
-          <Button
-            title="Sign in / Create account"
-            onPress={() => router.push("/auth")}
-            testID="guest-signin"
-            style={{ marginTop: spacing.xl, alignSelf: "stretch" }}
-          />
           <Pressable testID="guest-become-driver" onPress={() => router.push("/drive-with-us")} style={styles.guestDriverLink}>
             <Text style={styles.guestDriverText}>
               Want to drive with Getaride? <Text style={styles.guestDriverLinkText}>Apply here</Text>
