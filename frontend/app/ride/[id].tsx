@@ -634,6 +634,16 @@ function TrackingSheet({ ride, track, status, onCancel, insets, rideId, tip, onT
         )}
       </View>
 
+      {status === "arrived" && (track?.start_pin || ride.start_pin) ? (
+        <View style={styles.pinCard} testID="rider-pin">
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pinCardLabel}>Your start PIN</Text>
+            <Text style={styles.pinCardHint}>Share with your driver to start the trip</Text>
+          </View>
+          <Text style={styles.pinCardCode}>{track?.start_pin || ride.start_pin}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.driverRow}>
         <Pressable testID="track-driver-avatar" onPress={() => onDriverPress?.(d)} hitSlop={6}>
           <Avatar uri={d.photo} size={56} />
@@ -922,6 +932,10 @@ const styles = StyleSheet.create({
   etaNum: { fontFamily: font.monoBold, fontSize: 22, color: colors.brandPrimary },
   etaUnit: { fontFamily: font.medium, fontSize: 10, color: colors.brandPrimary, marginTop: -2 },
   driverRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  pinCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, marginBottom: spacing.sm },
+  pinCardLabel: { fontFamily: font.bold, fontSize: 14, color: colors.onSurface },
+  pinCardHint: { fontFamily: font.regular, fontSize: 12, color: colors.muted, marginTop: 1 },
+  pinCardCode: { fontFamily: font.monoBold, fontSize: 30, letterSpacing: 6, color: colors.brandPrimary },
   actionRow: { flexDirection: "row", justifyContent: "space-around", marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   actionBtn: { alignItems: "center", gap: 6 },
   actionIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },

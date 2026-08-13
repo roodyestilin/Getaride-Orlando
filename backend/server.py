@@ -411,6 +411,7 @@ class BidReq(BaseModel):
 
 class StatusReq(BaseModel):
     status: str
+    pin: Optional[str] = None
 
 
 class MessageReq(BaseModel):
@@ -672,6 +673,7 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         "bags": bags,
         "required_class": req_class,
         "required_class_label": VEHICLE_CLASSES[req_class]["label"],
+        "start_pin": f"{random.randint(0, 9999):04d}",
         "status": "scheduled" if req.when == "scheduled" else "searching",
         "assigned_driver": None,
         "selected_offer_id": None,
@@ -853,7 +855,7 @@ async def track_ride(ride_id: str, user=Depends(get_current_user)):
     return {**track, "pickup": ride["pickup"], "destination": ride["destination"],
             "assigned_driver": ride.get("assigned_driver"), "tip": ride.get("tip", 0),
             "final_fare": ride.get("final_fare"), "payment_status": ride.get("payment_status", "unpaid"),
-            "rider_rating": ride.get("rider_rating")}
+            "rider_rating": ride.get("rider_rating"), "start_pin": ride.get("start_pin")}
 
 
 @api_router.post("/rides/{ride_id}/tip")
@@ -936,6 +938,7 @@ async def ensure_driver_requests():
             "bags": bags,
             "required_class": req_class,
             "required_class_label": VEHICLE_CLASSES[req_class]["label"],
+            "start_pin": f"{random.randint(0, 9999):04d}",
             "status": "searching",
             "assigned_driver": None,
             "driver_bid": None,
@@ -1036,6 +1039,14 @@ async def driver_status(ride_id: str, req: StatusReq, user=Depends(get_current_u
     valid = {"arrived", "in_progress", "completed", "cancelled"}
     if req.status not in valid:
         raise HTTPException(400, "Invalid status")
+    ride = await db.rides.find_one({"id": ride_id}, {"_id": 0})
+    if not ride:
+        raise HTTPException(404, "Ride not found")
+    # Starting the trip requires the rider's 4-digit PIN.
+    if req.status == "in_progress" and ride.get("status") == "arrived":
+        expected = str(ride.get("start_pin") or "")
+        if expected and (req.pin or "").strip() != expected:
+            raise HTTPException(400, "Incorrect PIN. Ask your rider for their 4-digit start PIN.")
     await db.rides.update_one({"id": ride_id}, {"$set": {"status": req.status}})
     ride = await db.rides.find_one({"id": ride_id}, {"_id": 0})
     return {"ride": ride}

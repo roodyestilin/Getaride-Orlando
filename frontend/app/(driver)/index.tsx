@@ -35,8 +35,8 @@ function RequestPopup({ req, secsLeft, bottom, onSkip, onBid }: any) {
       </View>
       <View style={styles.reqTop}>
         <View style={styles.reqRating}>
-          <Ionicons name="person-circle" size={20} color={colors.brandPrimary} />
-          <Text style={styles.reqName}>{req.customer_name}</Text>
+          <Ionicons name="people" size={18} color={colors.brandPrimary} />
+          <Text style={styles.reqName}>{req.passengers ?? 1} Passenger{(req.passengers ?? 1) === 1 ? "" : "s"}</Text>
           <Ionicons name="star" size={12} color={colors.warning} />
           <Text style={styles.metaText}>{req.customer_rating}</Text>
         </View>
@@ -72,12 +72,10 @@ function RequestPopup({ req, secsLeft, bottom, onSkip, onBid }: any) {
             <Text style={styles.metaChipText}>{req.required_class_label}</Text>
           </View>
         ) : null}
-        {typeof req.passengers === "number" ? (
-          <View style={styles.metaChip}>
-            <Ionicons name="people" size={13} color={colors.brandPrimary} />
-            <Text style={styles.metaChipText}>{req.passengers} pax · {req.bags ?? 0} bag{req.bags === 1 ? "" : "s"}</Text>
-          </View>
-        ) : null}
+        <View style={styles.metaChip}>
+          <Ionicons name="bag-handle" size={13} color={colors.brandPrimary} />
+          <Text style={styles.metaChipText}>{req.bags ?? 0} bag{(req.bags ?? 0) === 1 ? "" : "s"}</Text>
+        </View>
       </View>
       <View style={styles.popupActions}>
         <Pressable testID={`skip-${req.id}`} onPress={onSkip} style={styles.skipBtn}>

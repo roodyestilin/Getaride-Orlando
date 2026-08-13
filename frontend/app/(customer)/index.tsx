@@ -45,7 +45,7 @@ export default function CustomerHome() {
   const [pickup, setPickup] = useState<LatLng>(DEFAULT_PICKUP);
   const [destination, setDestination] = useState<LatLng | null>(null);
   const [stops, setStops] = useState<LatLng[]>([]);
-  const [mode, setMode] = useState<"now" | "scheduled">("now");
+  const [mode, setMode] = useState<"now" | "scheduled">("scheduled");
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [scheduleModal, setScheduleModal] = useState(false);
   const [picker, setPicker] = useState<null | "pickup" | "destination" | "stop">(null);
@@ -88,7 +88,6 @@ export default function CustomerHome() {
         if (p.pickup) setPickup(p.pickup);
         if (p.destination) setDestination(p.destination);
         if (Array.isArray(p.stops)) setStops(p.stops);
-        if (p.mode) setMode(p.mode);
         if (p.scheduledAt) setScheduledAt(new Date(p.scheduledAt));
         if (p.airline) setAirline(p.airline);
         if (p.flightNumber) setFlightNumber(p.flightNumber);
@@ -299,17 +298,27 @@ export default function CustomerHome() {
         <Text style={styles.sheetTitle}>Where to?</Text>
 
         <View style={styles.modeRow}>
-          <ModePill label="Ride Now" icon="flash" active={mode === "now"} onPress={() => setMode("now")} testID="mode-now" />
-          <ModePill label="Schedule" icon="calendar" active={mode === "scheduled"} onPress={() => setScheduleModal(true)} testID="mode-schedule" />
+          <ModePill label="Schedule a ride" icon="calendar" active onPress={() => setScheduleModal(true)} testID="mode-schedule" />
         </View>
 
-        {mode === "scheduled" && scheduledAt && (
-          <Pressable testID="schedule-summary" onPress={() => setScheduleModal(true)} style={styles.scheduleChip}>
-            <Ionicons name="calendar" size={16} color={colors.brandPrimary} />
-            <Text style={styles.scheduleChipText}>Pickup {fmtScheduleLabel(scheduledAt)}</Text>
-            <Ionicons name="pencil" size={14} color={colors.muted} />
+        {!scheduledAt ? (
+          <Pressable testID="pick-time-prompt" onPress={() => setScheduleModal(true)} style={styles.timePrompt}>
+            <Ionicons name="time-outline" size={20} color={colors.brandPrimary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.timePromptTitle}>Choose your pickup date &amp; time</Text>
+              <Text style={styles.timePromptSub}>Pick when you&apos;d like to be picked up, then add your addresses.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
           </Pressable>
-        )}
+        ) : null}
+
+        {scheduledAt ? (
+        <>
+        <Pressable testID="schedule-summary" onPress={() => setScheduleModal(true)} style={styles.scheduleChip}>
+          <Ionicons name="calendar" size={16} color={colors.brandPrimary} />
+          <Text style={styles.scheduleChipText}>Pickup {fmtScheduleLabel(scheduledAt)}</Text>
+          <Ionicons name="pencil" size={14} color={colors.muted} />
+        </Pressable>
 
         <View style={styles.inputCard}>
           {isMCO(pickup) ? (
@@ -422,6 +431,8 @@ export default function CustomerHome() {
           loading={loading}
           testID="find-rides"
         />
+        </>
+        ) : null}
         </ScrollView>
       </View>
 
@@ -452,7 +463,6 @@ export default function CustomerHome() {
         initial={scheduledAt}
         onCancel={() => {
           setScheduleModal(false);
-          if (!scheduledAt) setMode("now");
         }}
         onConfirm={(d: Date) => {
           setScheduledAt(d);
@@ -793,6 +803,9 @@ const styles = StyleSheet.create({
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.sm },
   sheetTitle: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface, marginBottom: spacing.sm },
   modeRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },
+  timePrompt: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  timePromptTitle: { fontFamily: font.bold, fontSize: 15, color: colors.onSurface },
+  timePromptSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.muted, marginTop: 2, lineHeight: 17 },
   modePill: {
     flexDirection: "row",
     alignItems: "center",

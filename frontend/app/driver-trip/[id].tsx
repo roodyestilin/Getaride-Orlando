@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, Platform, Animated, PanResponder } from "react-native";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Linking, Platform, Animated, PanResponder, Modal, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
@@ -165,6 +165,9 @@ export default function DriverTrip() {
     });
   };
   const [, setTick] = useState(0);
+  const [pinModal, setPinModal] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
   useEffect(() => {
     const i = setInterval(() => setTick((x) => x + 1), 1000);
     return () => clearInterval(i);
@@ -201,6 +204,13 @@ export default function DriverTrip() {
   const advance = async () => {
     const step = NEXT[ride.status];
     if (!step) return;
+    // Starting the trip requires the rider's 4-digit PIN.
+    if (step.status === "in_progress") {
+      setPin("");
+      setPinError(null);
+      setPinModal(true);
+      return;
+    }
     unlockSpeech();
     setBusy(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -213,6 +223,22 @@ export default function DriverTrip() {
         setRide(r.ride);
       }
     } catch {}
+    setBusy(false);
+  };
+
+  const submitPin = async () => {
+    unlockSpeech();
+    setBusy(true);
+    setPinError(null);
+    try {
+      const r: any = await api(`/rides/${id}/driver-status`, { method: "POST", body: { status: "in_progress", pin } });
+      setRide(r.ride);
+      setPinModal(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e: any) {
+      setPinError(e?.message || "Incorrect PIN. Please try again.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    }
     setBusy(false);
   };
 
@@ -473,6 +499,35 @@ export default function DriverTrip() {
           ) : null}
         </View>
       </Animated.View>
+
+      <Modal visible={pinModal} animationType="fade" transparent onRequestClose={() => setPinModal(false)}>
+        <View style={styles.pinBackdrop}>
+          <View style={[styles.pinCard, { marginBottom: insets.bottom + spacing.xl }]}>
+            <View style={styles.pinIcon}><Ionicons name="lock-closed" size={26} color={colors.brandPrimary} /></View>
+            <Text style={styles.pinTitle}>Enter start PIN</Text>
+            <Text style={styles.pinSub}>Ask your rider for their 4-digit PIN to start the trip.</Text>
+            <TextInput
+              testID="pin-input"
+              value={pin}
+              onChangeText={(t) => setPin(t.replace(/[^0-9]/g, "").slice(0, 4))}
+              keyboardType="number-pad"
+              maxLength={4}
+              placeholder="––––"
+              placeholderTextColor={colors.surfaceTertiary}
+              style={styles.pinInput}
+              autoFocus
+            />
+            {ride.start_pin ? <Text style={styles.pinHint}>Rider&apos;s PIN: {ride.start_pin}</Text> : null}
+            {pinError ? <Text style={styles.pinError}>{pinError}</Text> : null}
+            <Pressable testID="pin-submit" onPress={submitPin} disabled={pin.length < 4 || busy} style={[styles.pinBtn, (pin.length < 4 || busy) && { opacity: 0.5 }]}>
+              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.pinBtnText}>Start Trip</Text>}
+            </Pressable>
+            <Pressable testID="pin-cancel" onPress={() => setPinModal(false)} disabled={busy} style={styles.pinGhost}>
+              <Text style={styles.pinGhostText}>Not yet</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -492,6 +547,18 @@ const styles = StyleSheet.create({
   sheetHeader: { paddingBottom: spacing.sm },
   sheetDetails: { paddingTop: spacing.xs },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.md },
+  pinBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end", paddingHorizontal: spacing.lg },
+  pinCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, alignItems: "center", gap: spacing.sm },
+  pinIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center", marginBottom: spacing.xs },
+  pinTitle: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
+  pinSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center", lineHeight: 20 },
+  pinInput: { fontFamily: font.monoBold, fontSize: 34, letterSpacing: 14, color: colors.onSurface, textAlign: "center", paddingLeft: 14, borderBottomWidth: 2, borderBottomColor: colors.border, marginTop: spacing.sm, minWidth: 180 },
+  pinHint: { fontFamily: font.medium, fontSize: 12, color: colors.muted, marginTop: spacing.xs },
+  pinError: { fontFamily: font.semibold, fontSize: 13, color: colors.error, textAlign: "center" },
+  pinBtn: { height: 52, borderRadius: radius.md, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center", alignSelf: "stretch", marginTop: spacing.md },
+  pinBtnText: { fontFamily: font.bold, fontSize: 16, color: "#fff" },
+  pinGhost: { paddingVertical: spacing.sm },
+  pinGhostText: { fontFamily: font.semibold, fontSize: 14, color: colors.muted },
   waiting: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xl },
   waitTitle: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface },
   waitSub: { fontFamily: font.regular, fontSize: 14, color: colors.muted, textAlign: "center" },
