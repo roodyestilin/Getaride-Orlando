@@ -101,3 +101,70 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Rebuild the frontend as a Next.js web app while reusing the existing FastAPI/MongoDB backend (Getaride Orlando ride-sharing). Phase 1 scope: marketing landing, auth (rider + driver signup/login), rider core journey (book ride -> compare driver offers -> select -> live tracking + chat -> rate/tip), and driver core journey (go online -> nearby requests -> bid -> run trip -> earnings). Match existing branding (purple). Mapbox for maps. Tailwind + shadcn-style UI."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 0
+  run_ui: false
+
+frontend:
+  - task: "Next.js scaffold served on port 3000 (supervisor program 'nextjs'), reuses backend at same-origin /api"
+    implemented: true
+    working: "NA"
+    file: "web/ (Next.js 15 App Router), /etc/supervisor/conf.d/nextjs.conf"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "New Next.js app in /app/web. Expo program stopped; nextjs runs `next dev -p 3000`. Landing renders (screenshot verified). Backend /api reachable via preview (login/me/rides/offers return 200 via curl)."
+  - task: "Auth (login + rider/driver signup with base64 photo)"
+    implemented: true
+    working: "NA"
+    file: "web/app/login/page.tsx, web/app/signup/page.tsx, web/src/lib/auth.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "JWT stored in localStorage. Role toggle on signup; photo upload -> base64. Login API verified 200 via curl. Full form click-through needs UI test (screenshot tool interactions were unreliable due to async issue in that tool)."
+  - task: "Rider journey: book -> offers -> select -> track -> chat -> rate/tip"
+    implemented: true
+    working: "NA"
+    file: "web/app/rider/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Booking form enforces MCO (to/from airport toggle). Offers poll every 2s, tracking every 2.5s, chat every 3s. Backend create-ride + offers verified via curl."
+  - task: "Driver journey: online toggle -> requests -> bid -> trip control (arrived/PIN/start/complete) -> earnings"
+    implemented: true
+    working: "NA"
+    file: "web/app/driver/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Approval gate for non-approved drivers. Custom-fare bidding within range + Accept Recommended. PIN shown as demo hint (rider simulated). Earnings chart from /driver/earnings."
+
+test_plan:
+  current_focus:
+    - "Auth (login + rider/driver signup with base64 photo)"
+    - "Rider journey: book -> offers -> select -> track -> chat -> rate/tip"
+    - "Driver journey: online toggle -> requests -> bid -> trip control -> earnings"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Phase 1 Next.js rebuild complete and live on port 3000. Backend UNCHANGED (only installed missing 'sendgrid' dep). Test credentials in /app/memory/test_credentials.md (rider@test.com / driver@test.com, both password Test1234; driver is approved). Please E2E test rider + driver flows through the preview URL root. Note: rides must start or end at MCO; the booking UI enforces this via a to/from airport toggle."
