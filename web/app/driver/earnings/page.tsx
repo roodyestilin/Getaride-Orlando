@@ -21,7 +21,7 @@ export default function Earnings() {
   ];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-3xl space-y-4 px-4 pt-4 lg:px-0 lg:pt-0">
       <h1 className="text-2xl font-bold">Earnings</h1>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {stats.map((s) => (

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Power, Star, MapPin, Plane, Users, Luggage, Check, ShieldAlert } from "lucide-react";
 import { api } from "@/src/lib/api";
-import { useAuth } from "@/src/lib/auth";
 import { useInterval } from "@/src/lib/useInterval";
+import { useIsMobile } from "@/src/lib/useIsMobile";
 import type { Ride } from "@/src/lib/types";
 import { Button, Card, Badge, Avatar, Spinner } from "@/src/components/ui";
 import MapView from "@/src/components/MapView";
@@ -51,7 +51,7 @@ function RequestCard({ r, onBid, busy }: { r: any; onBid: (id: string, fare: num
 }
 
 export default function DriverHome() {
-  const { user, refresh } = useAuth();
+  const isMobile = useIsMobile();
   const [online, setOnline] = useState(false);
   const [approval, setApproval] = useState("approved");
   const [ride, setRide] = useState<Ride | null>(null);
@@ -103,13 +103,13 @@ export default function DriverHome() {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
-  if (loading) return <div className="flex justify-center py-20"><Spinner className="h-8 w-8" /></div>;
+  if (loading) return <div className="flex justify-center py-24"><Spinner className="h-8 w-8" /></div>;
 
   // Approval gate
   if (approval !== "approved") {
     return (
-      <div className="mx-auto max-w-lg">
-        <Card className="p-8 text-center">
+      <div className="mx-auto max-w-lg px-4 lg:px-0">
+        <Card className="mt-4 p-8 text-center">
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100"><ShieldAlert className="h-7 w-7 text-warning" /></div>
           <h1 className="text-xl font-bold">{approval === "pending" ? "Application under review" : "Account not active"}</h1>
           <p className="mt-2 text-ink-muted">
@@ -124,95 +124,116 @@ export default function DriverHome() {
 
   const st = ride?.status;
 
+  const onlineToggle = (
+    <Card className="flex items-center justify-between p-5">
+      <div>
+        <p className="text-lg font-bold">{online ? "You're online" : "You're offline"}</p>
+        <p className="text-sm text-ink-muted">{online ? "Receiving nearby airport requests" : "Go online to start earning"}</p>
+      </div>
+      <button
+        onClick={toggleOnline}
+        disabled={busy || !!ride}
+        className={`flex h-14 w-14 items-center justify-center rounded-full transition-colors ${online ? "bg-success" : "bg-ink-muted"} disabled:opacity-50`}
+      >
+        <Power className="h-6 w-6 text-white" />
+      </button>
+    </Card>
+  );
+
+  const tripPanel = ride ? (
+    <Card className="space-y-3 p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold">Current trip</h2>
+        <Badge tone="brand">{(st || "").replace(/_/g, " ")}</Badge>
+      </div>
+      <div className="space-y-1.5 rounded-xl bg-surface-alt p-3 text-sm">
+        <p className="flex items-center gap-2 font-semibold">{ride.pickup.airport ? <Plane className="h-4 w-4 text-brand-primary" /> : <MapPin className="h-4 w-4 text-brand-primary" />} {ride.pickup.label}</p>
+        <p className="flex items-center gap-2 font-semibold">{ride.destination.airport ? <Plane className="h-4 w-4 text-ink" /> : <MapPin className="h-4 w-4 text-ink" />} {ride.destination.label}</p>
+      </div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-ink-muted">{ride.customer_name} · {ride.distance_miles} mi</span>
+        <span className="font-mono text-lg font-bold">{money(ride.final_fare || ride.recommended_fare)}</span>
+      </div>
+      {st === "searching" && (
+        <div className="flex items-center gap-2 rounded-xl bg-brand-tertiary/50 p-3 text-sm text-brand-onTertiary">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
+          Offer sent — waiting for the rider to accept…
+        </div>
+      )}
+      {st === "accepted" && <Button className="w-full" loading={busy} onClick={() => advance("arrived")}>I&apos;ve arrived at pickup</Button>}
+      {st === "arrived" && (
+        <div className="space-y-2">
+          <p className="text-sm text-ink-muted">Ask the rider for their 4-digit start PIN.</p>
+          <p className="text-center text-xs text-ink-muted">Rider PIN (demo): <span className="font-mono font-bold text-ink">{ride.start_pin}</span></p>
+          <div className="flex gap-2">
+            <input value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="PIN" className="h-11 flex-1 rounded-xl border border-line px-4 text-center font-mono text-lg tracking-widest outline-none focus:border-brand-primary" />
+            <Button loading={busy} onClick={() => advance("in_progress")}>Start trip</Button>
+          </div>
+        </div>
+      )}
+      {st === "in_progress" && <Button className="w-full" loading={busy} onClick={() => advance("completed")}>Complete trip</Button>}
+      {st === "completed" && (
+        <div className="rounded-xl bg-green-50 p-4 text-center">
+          <Check className="mx-auto mb-1 h-6 w-6 text-success" />
+          <p className="font-bold">Trip completed!</p>
+          <p className="text-sm text-ink-muted">Earned {money((ride.final_fare || 0) + (ride.tip || 0))}{ride.tip ? ` (incl. ${money(ride.tip)} tip)` : ""}</p>
+          <Button className="mt-3" size="sm" onClick={loadActive}>Back to requests</Button>
+        </div>
+      )}
+    </Card>
+  ) : null;
+
+  const requestsPanel = (
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold">Nearby requests</h2>
+      {requests.length === 0 && (
+        <Card className="flex flex-col items-center gap-2 p-8 text-center">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
+          <p className="text-sm text-ink-muted">Looking for airport requests near you…</p>
+        </Card>
+      )}
+      {requests.map((r) => <RequestCard key={r.id} r={r} onBid={bid} busy={busy} />)}
+    </div>
+  );
+
+  const offlineMsg = <Card className="p-8 text-center text-ink-muted">You&apos;re offline. Flip the switch to see requests.</Card>;
+  const body = ride ? tripPanel : online ? requestsPanel : offlineMsg;
+  const chatCard = ride && ["accepted", "arrived", "in_progress"].includes(st!) ? (
+    <Card className="p-5">
+      <h2 className="mb-3 text-lg font-bold">Chat with rider</h2>
+      <ChatPanel rideId={ride.id} meRole="driver" />
+    </Card>
+  ) : null;
+
+  // ---------- MOBILE ----------
+  if (isMobile) {
+    return (
+      <div className="relative">
+        <MapView pickup={ride?.pickup} destination={ride?.destination} height="26vh" radius={0} />
+        <div className="relative -mt-6 space-y-4 rounded-t-3xl bg-white px-4 pb-6 pt-5 shadow-[0_-6px_24px_rgba(0,0,0,0.10)]">
+          <div className="mx-auto h-1.5 w-10 rounded-full bg-line" />
+          {onlineToggle}
+          {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{err}</p>}
+          {body}
+          {chatCard}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- DESKTOP ----------
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
       <div className="space-y-4">
-        {/* Online toggle */}
-        <Card className="flex items-center justify-between p-5">
-          <div>
-            <p className="text-lg font-bold">{online ? "You're online" : "You're offline"}</p>
-            <p className="text-sm text-ink-muted">{online ? "Receiving nearby airport requests" : "Go online to start earning"}</p>
-          </div>
-          <button
-            onClick={toggleOnline}
-            disabled={busy || !!ride}
-            className={`flex h-14 w-14 items-center justify-center rounded-full transition-colors ${online ? "bg-success" : "bg-ink-muted"} disabled:opacity-50`}
-          >
-            <Power className="h-6 w-6 text-white" />
-          </button>
-        </Card>
-
+        {onlineToggle}
         {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{err}</p>}
-
-        {/* Active trip control */}
-        {ride ? (
-          <Card className="space-y-3 p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">Current trip</h2>
-              <Badge tone="brand">{(st || "").replace(/_/g, " ")}</Badge>
-            </div>
-            <div className="space-y-1.5 rounded-xl bg-surface-alt p-3 text-sm">
-              <p className="flex items-center gap-2 font-semibold">{ride.pickup.airport ? <Plane className="h-4 w-4 text-brand-primary" /> : <MapPin className="h-4 w-4 text-brand-primary" />} {ride.pickup.label}</p>
-              <p className="flex items-center gap-2 font-semibold">{ride.destination.airport ? <Plane className="h-4 w-4 text-ink" /> : <MapPin className="h-4 w-4 text-ink" />} {ride.destination.label}</p>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-ink-muted">{ride.customer_name} · {ride.distance_miles} mi</span>
-              <span className="font-mono text-lg font-bold">{money(ride.final_fare || ride.recommended_fare)}</span>
-            </div>
-
-            {st === "searching" && (
-              <div className="flex items-center gap-2 rounded-xl bg-brand-tertiary/50 p-3 text-sm text-brand-onTertiary">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
-                Offer sent — waiting for the rider to accept…
-              </div>
-            )}
-            {st === "accepted" && <Button className="w-full" loading={busy} onClick={() => advance("arrived")}>I&apos;ve arrived at pickup</Button>}
-            {st === "arrived" && (
-              <div className="space-y-2">
-                <p className="text-sm text-ink-muted">Ask the rider for their 4-digit start PIN.</p>
-                <p className="text-center text-xs text-ink-muted">Rider PIN (demo): <span className="font-mono font-bold text-ink">{ride.start_pin}</span></p>
-                <div className="flex gap-2">
-                  <input value={pin} onChange={(e) => setPin(e.target.value)} maxLength={4} placeholder="PIN" className="h-11 flex-1 rounded-xl border border-line px-4 text-center font-mono text-lg tracking-widest outline-none focus:border-brand-primary" />
-                  <Button loading={busy} onClick={() => advance("in_progress")}>Start trip</Button>
-                </div>
-              </div>
-            )}
-            {st === "in_progress" && <Button className="w-full" loading={busy} onClick={() => advance("completed")}>Complete trip</Button>}
-            {st === "completed" && (
-              <div className="rounded-xl bg-green-50 p-4 text-center">
-                <Check className="mx-auto mb-1 h-6 w-6 text-success" />
-                <p className="font-bold">Trip completed!</p>
-                <p className="text-sm text-ink-muted">Earned {money((ride.final_fare || 0) + (ride.tip || 0))}{ride.tip ? ` (incl. ${money(ride.tip)} tip)` : ""}</p>
-                <Button className="mt-3" size="sm" onClick={loadActive}>Back to requests</Button>
-              </div>
-            )}
-          </Card>
-        ) : online ? (
-          <div className="space-y-3">
-            <h2 className="text-lg font-bold">Nearby requests</h2>
-            {requests.length === 0 && (
-              <Card className="flex flex-col items-center gap-2 p-8 text-center">
-                <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
-                <p className="text-sm text-ink-muted">Looking for airport requests near you…</p>
-              </Card>
-            )}
-            {requests.map((r) => <RequestCard key={r.id} r={r} onBid={bid} busy={busy} />)}
-          </div>
-        ) : (
-          <Card className="p-8 text-center text-ink-muted">You&apos;re offline. Flip the switch to see requests.</Card>
-        )}
+        {body}
       </div>
-
       <div className="space-y-4">
         <Card className="overflow-hidden p-0">
           <MapView pickup={ride?.pickup} destination={ride?.destination} height={ride ? 380 : 300} />
         </Card>
-        {ride && ["accepted", "arrived", "in_progress"].includes(st!) && (
-          <Card className="p-5">
-            <h2 className="mb-3 text-lg font-bold">Chat with rider</h2>
-            <ChatPanel rideId={ride.id} meRole="driver" />
-          </Card>
-        )}
+        {chatCard}
       </div>
     </div>
   );

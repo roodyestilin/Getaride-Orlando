@@ -1,0 +1,14 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/drive/page": "app/drive/page.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/signup/page": "app/signup/page.js",
+  "/driver/account/page": "app/driver/account/page.js",
+  "/driver/earnings/page": "app/driver/earnings/page.js",
+  "/driver/page": "app/driver/page.js",
+  "/rider/account/page": "app/rider/account/page.js",
+  "/rider/activity/page": "app/rider/activity/page.js",
+  "/rider/page": "app/rider/page.js",
+  "/rider/ride/[id]/page": "app/rider/ride/[id]/page.js"
+}

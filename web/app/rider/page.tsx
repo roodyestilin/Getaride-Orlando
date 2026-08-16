@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plane, MapPin, Users, Luggage, Clock, ChevronRight, Navigation } from "lucide-react";
+import { Plane, Users, Luggage, Clock, ChevronRight, Navigation } from "lucide-react";
 import { api } from "@/src/lib/api";
 import { MCO } from "@/src/lib/places";
 import type { Place, Ride } from "@/src/lib/types";
 import { Button, Card, Badge, Spinner } from "@/src/components/ui";
 import PlacePicker from "@/src/components/PlacePicker";
 import MapView from "@/src/components/MapView";
-import { money } from "@/src/lib/utils";
+import { useIsMobile } from "@/src/lib/useIsMobile";
 
 const ACTIVE = ["searching", "scheduled", "driver_enroute", "arrived", "in_progress"];
 
@@ -32,6 +32,7 @@ function Stepper({ label, icon: Icon, value, setValue, min, max }: any) {
 
 export default function RiderHome() {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [dir, setDir] = useState<"to" | "from">("to");
   const [place, setPlace] = useState<Place | null>(null);
   const [pax, setPax] = useState(1);
@@ -75,75 +76,99 @@ export default function RiderHome() {
     }
   }
 
+  const activeCard = active ? (
+    <Link href={`/rider/ride/${active.id}`}>
+      <Card className="flex items-center gap-3 p-4 transition-shadow hover:shadow-card">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-tertiary"><Navigation className="h-5 w-5 text-brand-primary" /></div>
+        <div className="min-w-0 flex-1">
+          <div className="mb-0.5 flex items-center gap-2">
+            <p className="font-bold">Active ride</p>
+            <Badge tone="brand">{active.status.replace(/_/g, " ")}</Badge>
+          </div>
+          <p className="truncate text-sm text-ink-muted">{active.pickup.label} → {active.destination.label}</p>
+        </div>
+        <ChevronRight className="h-5 w-5 text-ink-muted" />
+      </Card>
+    </Link>
+  ) : null;
+
+  const form = (
+    <div className="space-y-4">
+      {/* direction */}
+      <div className="grid grid-cols-2 gap-2 rounded-full bg-surface-alt p-1">
+        {(["to", "from"] as const).map((d) => (
+          <button key={d} onClick={() => setDir(d)} className={`h-10 rounded-full text-sm font-bold transition-colors ${dir === d ? "bg-white text-brand-primary shadow-soft" : "text-ink-muted"}`}>
+            {d === "to" ? "To the airport" : "From the airport"}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 rounded-xl border border-brand-primary/30 bg-brand-tertiary/40 px-4 py-3">
+          <Plane className="h-4 w-4 text-brand-primary" />
+          <span className="text-[15px] font-semibold">{MCO.label}</span>
+          <Badge tone="brand" className="ml-auto">{dir === "to" ? "Drop-off" : "Pickup"}</Badge>
+        </div>
+        <PlacePicker value={place} onChange={setPlace} placeholder={dir === "to" ? "Search pickup location" : "Search drop-off location"} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Stepper label="Passengers" icon={Users} value={pax} setValue={setPax} min={1} max={6} />
+        <Stepper label="Bags" icon={Luggage} value={bags} setValue={setBags} min={0} max={6} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 rounded-full bg-surface-alt p-1">
+        {(["now", "scheduled"] as const).map((w) => (
+          <button key={w} onClick={() => setWhen(w)} className={`h-10 rounded-full text-sm font-bold transition-colors ${when === w ? "bg-white text-brand-primary shadow-soft" : "text-ink-muted"}`}>
+            {w === "now" ? "Ride now" : "Schedule a ride"}
+          </button>
+        ))}
+      </div>
+      {when === "scheduled" && (
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-white px-4">
+          <Clock className="h-4 w-4 text-brand-primary" />
+          <input type="datetime-local" value={schedule} onChange={(e) => setSchedule(e.target.value)} className="h-12 w-full bg-transparent text-[15px] outline-none" />
+        </div>
+      )}
+
+      {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{err}</p>}
+      <Button size="lg" className="w-full" loading={submitting} onClick={submit}>
+        {when === "now" ? "Find drivers" : "Schedule ride"}
+      </Button>
+    </div>
+  );
+
+  if (loading) {
+    return <div className="flex justify-center py-24"><Spinner className="h-8 w-8" /></div>;
+  }
+
+  // ---------- MOBILE: native-app style (map + bottom sheet + tabs) ----------
+  if (isMobile) {
+    return (
+      <div className="relative">
+        <MapView pickup={pickup} destination={destination} height="42vh" radius={0} />
+        <div className="relative -mt-6 rounded-t-3xl bg-white px-4 pb-6 pt-5 shadow-[0_-6px_24px_rgba(0,0,0,0.10)]">
+          <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-line" />
+          {activeCard && <div className="mb-4">{activeCard}</div>}
+          <h1 className="mb-1 text-2xl font-bold">Where to?</h1>
+          <p className="mb-4 text-sm text-ink-muted">Every trip starts or ends at Orlando Intl (MCO).</p>
+          {form}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- DESKTOP ----------
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
       <div className="space-y-4">
-        {loading ? (
-          <Card className="flex h-40 items-center justify-center"><Spinner /></Card>
-        ) : active ? (
-          <Link href={`/rider/ride/${active.id}`}>
-            <Card className="flex items-center gap-4 p-5 transition-shadow hover:shadow-card">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-tertiary"><Navigation className="h-6 w-6 text-brand-primary" /></div>
-              <div className="flex-1">
-                <div className="mb-1 flex items-center gap-2">
-                  <p className="font-bold">You have an active ride</p>
-                  <Badge tone="brand">{active.status.replace(/_/g, " ")}</Badge>
-                </div>
-                <p className="truncate text-sm text-ink-muted">{active.pickup.label} → {active.destination.label}</p>
-              </div>
-              <ChevronRight className="h-5 w-5 text-ink-muted" />
-            </Card>
-          </Link>
-        ) : null}
-
+        {activeCard}
         <Card className="p-5">
           <h1 className="mb-1 text-xl font-bold">Book your airport ride</h1>
           <p className="mb-4 text-sm text-ink-muted">Every trip starts or ends at Orlando Intl (MCO).</p>
-
-          {/* direction */}
-          <div className="mb-4 grid grid-cols-2 gap-2 rounded-full bg-surface-alt p-1">
-            {(["to", "from"] as const).map((d) => (
-              <button key={d} onClick={() => setDir(d)} className={`h-10 rounded-full text-sm font-bold transition-colors ${dir === d ? "bg-white text-brand-primary shadow-soft" : "text-ink-muted"}`}>
-                {d === "to" ? "To the airport" : "From the airport"}
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 rounded-xl border border-brand-primary/30 bg-brand-tertiary/40 px-4 py-3">
-              <Plane className="h-4 w-4 text-brand-primary" />
-              <span className="text-[15px] font-semibold">{MCO.label}</span>
-              <Badge tone="brand" className="ml-auto">{dir === "to" ? "Drop-off" : "Pickup"}</Badge>
-            </div>
-            <PlacePicker value={place} onChange={setPlace} placeholder={dir === "to" ? "Search pickup location" : "Search drop-off location"} />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <Stepper label="Passengers" icon={Users} value={pax} setValue={setPax} min={1} max={6} />
-            <Stepper label="Bags" icon={Luggage} value={bags} setValue={setBags} min={0} max={6} />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2 rounded-full bg-surface-alt p-1">
-            {(["now", "scheduled"] as const).map((w) => (
-              <button key={w} onClick={() => setWhen(w)} className={`h-10 rounded-full text-sm font-bold transition-colors ${when === w ? "bg-white text-brand-primary shadow-soft" : "text-ink-muted"}`}>
-                {w === "now" ? "Ride now" : "Schedule"}
-              </button>
-            ))}
-          </div>
-          {when === "scheduled" && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-white px-4">
-              <Clock className="h-4 w-4 text-brand-primary" />
-              <input type="datetime-local" value={schedule} onChange={(e) => setSchedule(e.target.value)} className="h-12 w-full bg-transparent text-[15px] outline-none" />
-            </div>
-          )}
-
-          {err && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">{err}</p>}
-          <Button size="lg" className="mt-4 w-full" loading={submitting} onClick={submit}>
-            {when === "now" ? "Find drivers" : "Schedule ride"}
-          </Button>
+          {form}
         </Card>
       </div>
-
       <div className="hidden lg:block">
         <Card className="overflow-hidden p-0">
           <MapView pickup={pickup} destination={destination} height={560} />

@@ -95,7 +95,7 @@ export default function RideDetail() {
   const isSearching = status === "searching" || (status === "scheduled" && !driver);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+    <div className="grid gap-6 px-4 pt-4 lg:grid-cols-[1.1fr_1fr] lg:px-0 lg:pt-0">
       {/* LEFT: map + route */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">

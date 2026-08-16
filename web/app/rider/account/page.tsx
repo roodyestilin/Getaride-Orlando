@@ -31,7 +31,7 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-4">
+    <div className="mx-auto max-w-xl space-y-4 px-4 pt-4 lg:px-0 lg:pt-0">
       <h1 className="text-2xl font-bold">Account</h1>
       <Card className="flex items-center gap-4 p-5">
         <label className="cursor-pointer">

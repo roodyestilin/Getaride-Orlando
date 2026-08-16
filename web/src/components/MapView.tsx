@@ -12,6 +12,7 @@ interface Props {
   driver?: { lat: number; lng: number } | null;
   className?: string;
   height?: number | string;
+  radius?: number;
 }
 
 function marker(color: string, label?: string) {
@@ -32,7 +33,7 @@ function marker(color: string, label?: string) {
   return el;
 }
 
-export default function MapView({ pickup, destination, driver, className, height = 340 }: Props) {
+export default function MapView({ pickup, destination, driver, className, height = 340, radius = 16 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markers = useRef<mapboxgl.Marker[]>([]);
@@ -114,5 +115,5 @@ export default function MapView({ pickup, destination, driver, className, height
     }
   }, [driver]);
 
-  return <div ref={container} className={className} style={{ height, width: "100%", borderRadius: 16, overflow: "hidden" }} />;
+  return <div ref={container} className={className} style={{ height, width: "100%", borderRadius: radius, overflow: "hidden" }} />;
 }

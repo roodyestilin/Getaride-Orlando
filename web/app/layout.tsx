@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { AuthProvider } from "@/src/lib/auth";
+import SwCleanup from "@/src/components/SwCleanup";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${jakarta.variable} ${grotesk.variable}`}>
       <body className="font-sans text-ink antialiased">
+        <SwCleanup />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

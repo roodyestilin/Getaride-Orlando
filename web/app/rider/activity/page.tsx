@@ -22,7 +22,7 @@ export default function Activity() {
   if (!rides) return <FullSpinner />;
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl px-4 pt-4 lg:px-0 lg:pt-0">
       <h1 className="mb-4 text-2xl font-bold">Your rides</h1>
       {rides.length === 0 && (
         <Card className="p-10 text-center text-ink-muted">No rides yet. Book your first airport ride!</Card>
