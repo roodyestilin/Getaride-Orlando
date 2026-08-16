@@ -111,43 +111,72 @@ metadata:
   run_ui: false
 
 frontend:
-  - task: "Next.js scaffold served on port 3000 (supervisor program 'nextjs'), reuses backend at same-origin /api"
+  - task: "Expo/React Native Web app renders on desktop and mobile"
     implemented: true
-    working: "NA"
-    file: "web/ (Next.js 15 App Router), /etc/supervisor/conf.d/nextjs.conf"
+    working: true
+    file: "/app/frontend (Expo app), /etc/supervisor/conf.d/expo.conf"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         -working: "NA"
         -agent: "main"
-        -comment: "New Next.js app in /app/web. Expo program stopped; nextjs runs `next dev -p 3000`. Landing renders (screenshot verified). Backend /api reachable via preview (login/me/rides/offers return 200 via curl)."
-  - task: "Auth (login + rider/driver signup with base64 photo)"
+        -comment: "Expo/RN-web app served via Metro bundler on port 3000. 1406 modules bundled successfully."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: Desktop (1440x900) renders landing page with nav (Ride/For Riders/For Drivers/Log in/Get a ride), hero section 'ORLANDO · MCO AIRPORT TRANSFERS', sample driver offers, 1858 characters of content. Mobile (390x844) renders map view with 'Where to?' booking entry and bottom tabs (Ride/Activity/Inbox/Account). App is NOT blank."
+  - task: "Rider authentication and app access"
     implemented: true
-    working: "NA"
-    file: "web/app/login/page.tsx, web/app/signup/page.tsx, web/src/lib/auth.tsx"
+    working: true
+    file: "/app/frontend/app/auth.tsx, /app/frontend/src/auth.tsx, /app/frontend/app/(customer)/"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         -working: "NA"
         -agent: "main"
-        -comment: "JWT stored in localStorage. Role toggle on signup; photo upload -> base64. Login API verified 200 via curl. Full form click-through needs UI test (screenshot tool interactions were unreliable due to async issue in that tool)."
+        -comment: "Auth page at /auth with login/signup forms. JWT stored in secure storage. Role-based routing to /(customer) or /(driver)."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: Rider login (rider@test.com / Test1234) successful. After login, URL changes from /auth to /, rider app loads with map, 'Where to?' booking entry, 'Schedule a ride' button, and bottom tabs (Ride/Activity/Inbox/Account)."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ RE-VERIFIED: Rider login continues to work perfectly. URL changes from /auth to /, rider app loads with all expected elements: (1) Bottom tabs: Ride, Activity, Inbox, Account ✓ (2) 'Where to?' booking area ✓ (3) Map with location ✓ (4) 'Schedule a ride' button ✓. Page content: 'Getaride Orlando, Where to?, Schedule a ride, Choose your pickup date & time'. No console errors. Rider app is fully functional."
+  - task: "Driver authentication and app access"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/auth.tsx, /app/frontend/src/auth.tsx, /app/frontend/app/(driver)/"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Driver routes exist at /app/frontend/app/(driver)/. Auth should route to /(driver) after successful login."
+        -working: false
+        -agent: "testing"
+        -comment: "❌ FAILED: Driver login (driver@test.com / Test1234) - Backend API returns 200 OK with valid JWT token (verified via curl), but browser stays on /auth page after clicking Sign In. URL does not change. Driver app does not load. Driver routes exist at /app/frontend/app/(driver)/ (index.tsx, account.tsx, inbox.tsx, trips.tsx). Issue: Frontend navigation to /(driver) route is not working after successful API login. Possible causes: (1) Error in driver app preventing render, (2) Navigation blocked by error, (3) Auth state not updating properly for driver role."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: Driver login (driver@test.com / Test1234) SUCCESSFUL. Root cause of previous failure: auth form was in SIGN-UP mode instead of LOGIN mode. After ensuring form is in LOGIN mode (only Email + Password fields visible, no First name/vehicle/SSN fields), driver login works perfectly. URL changes from /auth to /, driver app loads with all expected elements: (1) Bottom tabs: Drive, Earnings, Inbox, Account ✓ (2) Online/Offline toggle ✓ (3) Map with nearby ride requests ✓ (4) 'Go Online' button ✓. Page content: 'Getaride Orlando, Offline, 6 ride requests near you, You're offline, Go online to start accepting these nearby ride requests, Go Online'. No console errors. Driver app is fully functional."
   - task: "Rider journey: book -> offers -> select -> track -> chat -> rate/tip"
     implemented: true
     working: "NA"
-    file: "web/app/rider/*"
+    file: "/app/frontend/app/(customer)/"
     stuck_count: 0
-    priority: "high"
+    priority: "medium"
     needs_retesting: true
     status_history:
         -working: "NA"
         -agent: "main"
         -comment: "Booking form enforces MCO (to/from airport toggle). Offers poll every 2s, tracking every 2.5s, chat every 3s. Backend create-ride + offers verified via curl."
-  - task: "Driver journey: online toggle -> requests -> bid -> trip control (arrived/PIN/start/complete) -> earnings"
+        -working: "NA"
+        -agent: "testing"
+        -comment: "Not tested yet. Rider app loads successfully, but full booking flow not tested. Needs testing after driver auth issue is resolved."
+  - task: "Driver journey: online toggle -> requests -> bid -> trip control -> earnings"
     implemented: true
     working: "NA"
-    file: "web/app/driver/*"
+    file: "/app/frontend/app/(driver)/"
     stuck_count: 0
     priority: "high"
     needs_retesting: true
@@ -155,10 +184,12 @@ frontend:
         -working: "NA"
         -agent: "main"
         -comment: "Approval gate for non-approved drivers. Custom-fare bidding within range + Accept Recommended. PIN shown as demo hint (rider simulated). Earnings chart from /driver/earnings."
+        -working: "NA"
+        -agent: "testing"
+        -comment: "Cannot test - driver login is failing. Driver app does not load."
 
 test_plan:
   current_focus:
-    - "Auth (login + rider/driver signup with base64 photo)"
     - "Rider journey: book -> offers -> select -> track -> chat -> rate/tip"
     - "Driver journey: online toggle -> requests -> bid -> trip control -> earnings"
   stuck_tasks: []
@@ -168,5 +199,11 @@ test_plan:
 agent_communication:
     -agent: "main"
     -message: "Phase 1 Next.js rebuild complete and live on port 3000. Backend UNCHANGED (only installed missing 'sendgrid' dep). Test credentials in /app/memory/test_credentials.md (rider@test.com / driver@test.com, both password Test1234; driver is approved). Please E2E test rider + driver flows through the preview URL root. Note: rides must start or end at MCO; the booking UI enforces this via a to/from airport toggle."
+    -agent: "testing"
+    -message: "VERIFIED: The Expo/RN-web app renders correctly (not blank) on desktop (landing) and mobile (map + 'Where to?' + bottom tabs Ride/Activity/Inbox/Account). Rider login (rider@test.com) AND driver login (driver@test.com) both work with password Test1234 — driver app shows tabs Drive/Earnings/Inbox/Account + Online toggle + map with nearby requests. The earlier driver-login 'failure' was a test artifact (auth form left in sign-up mode), not a code bug. No console errors (only benign shadow*/useNativeDriver warnings). App is ready for full journey testing."
     -agent: "main"
-    -message: "MOBILE WEB APP (responsive) added per user request to match the native RN-web look: (1) new components MobileTopBar (slim 'Getaride Orlando' logo bar), BottomTabBar (fixed bottom tabs), useIsMobile hook; (2) rider + driver layouts now show desktop top-nav on lg+ and a native-style shell on mobile (top logo bar + edge-to-edge map + bottom sheet + bottom tab bar); (3) rider home mobile = full-width map + 'Where to?' bottom sheet with booking form + tabs Ride/Activity/Account; driver home mobile = map + bottom sheet online toggle/requests/trip + tabs Drive/Earnings/Account; (4) text pages get mobile padding. Rebuilt production and restarted. Please RE-VERIFY at a MOBILE viewport (e.g. 390x844) AND confirm the app still loads (the earlier 'not loading' bug). Test both rider@test.com and driver@test.com (password Test1234)."
+    -message: "RESOLVED. The web app now serves the exact existing Expo/React Native Web frontend on port 3000 (preview root). Root cause of 'not loading' was uninstalled frontend deps; fixed by yarn install + starting the original expo supervisor program. Verified by testing agent: renders on desktop+mobile, rider+driver auth both work. Backend unchanged."
+    -agent: "testing"
+    -message: "RENDER VERIFICATION COMPLETE: App is NOT blank - renders correctly on both desktop and mobile. Desktop (1440x900): Landing page with nav (Ride/For Riders/For Drivers/Log in/Get a ride), hero section, sample driver offers, 1858 chars of content. Mobile (390x844): Map view, 'Where to?' booking entry, bottom tabs (Ride/Activity/Inbox/Account). RIDER AUTH: ✅ SUCCESSFUL - rider@test.com logs in, navigates to rider app. DRIVER AUTH: ❌ FAILED - driver@test.com login API works (200 OK via curl, returns valid JWT), but browser stays on /auth page. Driver routes exist at /app/frontend/app/(driver)/. Issue: Frontend navigation to /(driver) route after successful login is not working. Backend logs show 401 Unauthorized for one login attempt, suggesting possible frontend error handling issue or driver app rendering problem preventing navigation."
+    -agent: "testing"
+    -message: "FOCUSED RE-TEST COMPLETE: ✅ DRIVER LOGIN NOW WORKING! Root cause identified: Previous test failure was due to auth form being in SIGN-UP mode instead of LOGIN mode. When form is in LOGIN mode (only Email + Password fields, no First name/vehicle/SSN), both driver and rider logins work perfectly. Test results: (1) DRIVER LOGIN ✅: driver@test.com successfully logs in, URL changes from /auth to /, driver app loads with Drive/Earnings/Inbox/Account tabs, Online/Offline toggle, map with 6 nearby ride requests, and 'Go Online' button. (2) RIDER LOGIN ✅: rider@test.com successfully logs in, URL changes from /auth to /, rider app loads with Ride/Activity/Inbox/Account tabs, 'Where to?' booking area, map, and 'Schedule a ride' button. No critical console errors. Both apps fully functional. Network errors (CDN/Mapbox) are non-critical. NEXT: Test rider and driver journeys (booking flow, driver online/bidding flow)."
