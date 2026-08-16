@@ -13,7 +13,7 @@ import requests
 
 BASE_URL = os.environ.get(
     "EXPO_PUBLIC_BACKEND_URL",
-    "https://fare-compare-30.preview.emergentagent.com",
+    "https://nextjs-rebuild-8.preview.emergentagent.com",
 ).rstrip("/")
 
 # 1x1 transparent PNG base64 for the profile photo

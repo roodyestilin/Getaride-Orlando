@@ -21,7 +21,7 @@ import requests
 import stripe
 
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL",
-                          "https://fare-compare-30.preview.emergentagent.com").rstrip("/")
+                          "https://nextjs-rebuild-8.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 RIDER_EMAIL = "rider@getaride.com"

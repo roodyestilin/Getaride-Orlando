@@ -14,7 +14,7 @@ import base64
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://fare-compare-30.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://nextjs-rebuild-8.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 RIDER_A = {"email": "rider@getaride.com", "password": "Ride1234"}
