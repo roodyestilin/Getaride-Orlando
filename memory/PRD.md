@@ -45,7 +45,17 @@ fare marketplace (recommended fare → driver offers → pick), real-time tracki
 - P2: Web Admin Dashboard; ratings after trip; promo codes; surge logic; multiple vehicle classes.
 - Tech debt: split server.py into routers; replace deprecated RN-Web `shadow*` with `boxShadow`.
 
+## Recently Completed (this session)
+- SendGrid transactional emails fully wired: signup verification, driver application, ride scheduled,
+  driver selected/confirmed, ride cancelled (with/without $5 fee), and driver approved. Sender changed to
+  verified `info@getarideorlando.com` — SendGrid now returns 2xx (delivering). (6/6 backend tests pass.)
+- P0 per-ride ownership authorization added (server.py helpers: ensure_ride_participant, ensure_ride_customer,
+  ensure_thread_access) on GET/POST rides {id}, /offers, /select, /cancel, /track, /driver-status, /messages
+  (incl. support-<userId> thread isolation). (19/19 backend tests pass — iteration_17.json.)
+- Mapbox confirmed live: MapView.web.tsx uses real streets-v12 tiles + Directions API; token present in
+  frontend/.env. Verified rendering (Lake Eola, Orlando streets).
+
 ## Next Tasks
-1. Wire Mapbox once API key is provided (swap `src/components/MapView.tsx` projection for real tiles).
-2. Add per-ride ownership authorization on select/cancel/track/driver-status.
-3. Add post-trip rating flow.
+1. P1: Profile photos → object storage (currently base64 strings).
+2. P1: Push notifications (Emergent-managed) for ride requests/offer acceptances — needs deploy + build.
+3. Tech debt: split server.py into routers; extract ScheduleModal from (customer)/index.tsx.

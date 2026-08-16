@@ -1,0 +1,39 @@
+{
+  "summary": "Backend-only test of the 3 newly-wired SendGrid email hooks (select_offer, cancel_ride, admin approve) + regression on register & ride/schedule. All 6 pytest cases pass — the endpoints return 200 and no exception propagates from the email call (fire-and-forget try/except in emailer._send_sync works as designed). IMPORTANT: SendGrid itself is returning HTTP 403 Forbidden for every outbound send (visible in backend.err.log as 'WARNING:getaride.email:SendGrid send failed to <recipient>: HTTP Error 403: Forbidden'). This is a CONFIG-LEVEL issue (unverified sender identity or API-key scope) — no emails are actually being delivered, but requests still succeed because the emailer swallows the exception.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "emailer._send_sync (all templates)", "issue": "SendGrid returns HTTP 403 Forbidden on every send. Sender 'no-reply@getaride.com' is likely not a verified Single Sender / Domain Authentication in the SendGrid account, OR the API key SENDGRID_API_KEY does not have 'Mail Send' permission. Code path is correct — the endpoints return 200 and log a warning — but no email is actually delivered."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter16_email_hooks.py",
+    "/app/test_reports/pytest/iter16_email_hooks.xml"
+  ],
+  "action_items": [
+    "Verify sender identity 'no-reply@getaride.com' in the SendGrid dashboard (Sender Authentication → Single Sender Verification or Domain Authentication). Until this is done SendGrid will keep returning 403 and no transactional email will actually be delivered, even though the API returns 200 to the client.",
+    "Confirm the SENDGRID_API_KEY in /app/backend/.env has the 'Mail Send' scope (Full Access or Restricted with Mail Send enabled). Restricted keys without that scope also produce 403.",
+    "(Optional) In emailer._send_sync, log resp.body along with the status code on non-2xx so future misconfigurations are easier to diagnose without adding a second SendGrid call."
+  ],
+  "critical_code_review_comments": [
+    "emailer._send_sync correctly wraps SendGridAPIClient(...).send(...) in try/except and only logs warnings, so email failures never break the request path — verified across all 5 wired templates.",
+    "All 3 new hook points are correctly placed AFTER the DB update so the response payload the client sees is authoritative (server.py: select_offer L791-792, cancel_ride L832-834, admin_set_driver_status L1413-1414).",
+    "email_ride_cancelled correctly passes the computed fee (0.0 for pre-dispatch, 5.0 for driver_enroute) — verified.",
+    "email_driver_selected receives the winning offer's fare (not the recommended fare) — verified matches ride.final_fare."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter16_email_hooks.py (new)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "n/a"},
+  "seed_data_creation": "Created transient TEST_v16reg+*@getaride.com customer and TEST_v16drv+*@getaride.com pending driver during the run (not cleaned up, matches existing TEST_ prefix convention).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Public backend URL comes from EXPO_PUBLIC_BACKEND_URL in /app/frontend/.env (NOT EXPO_BACKEND_URL). Test file: /app/backend/tests/test_iter16_email_hooks.py — reusable regression for the 3 email hooks + register/schedule. To trigger the $5 cancel-fee path you must (a) create a ride, (b) poll GET /api/rides/{id}/offers for up to ~15s (offers are revealed progressively i*1.6s), (c) POST /select, then (d) POST /cancel. Backend log path for SendGrid warnings: /var/log/supervisor/backend.err.log — grep 'SendGrid send failed'.",
+  "rca_of_issue": "N/A (no user-reported bug). Sub-note: emails currently do not deliver in this environment because SendGrid returns 403 Forbidden — root cause is almost certainly an unverified sender identity for no-reply@getaride.com OR an API key scoped without 'Mail Send'. Verify one of those two in the SendGrid dashboard; no code change required."
+}

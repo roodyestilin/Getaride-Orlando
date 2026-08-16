@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   useWindowDimensions,
+  Animated,
+  PanResponder,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -491,9 +493,45 @@ function CancelConfirmModal({ visible, scheduledTime, busy, error, onClose, onCo
 
 
 function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCancel, insets, scheduled }: any) {
+  const { height: winH } = useWindowDimensions();
+  const collapsedH = Math.round(winH * 0.8);
+  const expandedH = Math.round(winH * 0.95);
+  const sheetH = useRef(new Animated.Value(expandedH)).current;
+  const startH = useRef(expandedH);
+  const curH = useRef(expandedH);
+
+  useEffect(() => {
+    const id = sheetH.addListener(({ value }) => { curH.current = value; });
+    return () => sheetH.removeListener(id);
+  }, [sheetH]);
+
+  const snap = (to: number) => {
+    Animated.spring(sheetH, { toValue: to, useNativeDriver: false, bounciness: 2, speed: 14 }).start();
+    startH.current = to;
+  };
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
+      onPanResponderGrant: () => { startH.current = curH.current; },
+      onPanResponderMove: (_, g) => {
+        const nh = Math.min(expandedH, Math.max(collapsedH, startH.current - g.dy));
+        sheetH.setValue(nh);
+      },
+      onPanResponderRelease: (_, g) => {
+        const mid = (collapsedH + expandedH) / 2;
+        const goUp = g.vy < -0.3 || (g.vy <= 0.3 && curH.current > mid);
+        snap(goUp ? expandedH : collapsedH);
+      },
+    })
+  ).current;
+
   return (
-    <View style={[styles.sheet, { maxHeight: "68%", paddingBottom: insets.bottom + spacing.md }]}>
-      <View style={styles.handle} />
+    <Animated.View style={[styles.sheet, styles.sheetFlex, { height: sheetH, paddingBottom: insets.bottom + spacing.md }]}>
+      <View {...pan.panHandlers} style={styles.dragArea}>
+        <View style={styles.handle} />
+      </View>
       {scheduled ? (
         <View style={styles.schedBanner}>
           <Ionicons name="calendar" size={15} color={colors.brandPrimary} />
@@ -553,7 +591,7 @@ function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCanc
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing.md }}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing.md }}>
         {offers.length === 0 ? (
           <View style={styles.waiting}>
             <ActivityIndicator color={colors.brandPrimary} />
@@ -606,7 +644,7 @@ function SearchingSheet({ ride, offers, onAccept, selecting, acceptError, onCanc
       </ScrollView>
 
       <Button title="Cancel Request" variant="secondary" onPress={onCancel} testID="cancel-request" />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -851,6 +889,8 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.surfaceTertiary, marginBottom: spacing.md },
+  sheetFlex: { paddingTop: 0 },
+  dragArea: { alignSelf: "stretch", alignItems: "center", paddingTop: spacing.md, paddingBottom: spacing.xs, marginHorizontal: -spacing.xl, marginBottom: spacing.sm },
   summaryRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: spacing.md },
   recLabel: { fontFamily: font.medium, fontSize: 12, color: colors.muted },
   recFare: { fontFamily: font.monoBold, fontSize: 32, color: colors.onSurface },

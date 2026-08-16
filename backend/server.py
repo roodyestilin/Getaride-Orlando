@@ -21,6 +21,8 @@ from pydantic import BaseModel, EmailStr, Field
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+import emailer  # noqa: E402  (after load_dotenv so env is available)
+
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
@@ -261,6 +263,7 @@ def public_user(u: dict) -> dict:
         "plate": u.get("plate"),
         "online": u.get("online", False),
         "approval_status": u.get("approval_status", "approved"),
+        "email_verified": u.get("email_verified", False),
         "color": u.get("color"),
         "first_name": u.get("first_name"),
         "last_name": u.get("last_name"),
@@ -340,6 +343,49 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     if not user:
         raise HTTPException(401, "User not found")
     return user
+
+
+# --------------------------------------------------------------------------
+# Per-ride ownership / access helpers
+# --------------------------------------------------------------------------
+def is_ride_customer(ride: dict, user: dict) -> bool:
+    return ride.get("customer_id") == user["id"]
+
+
+def is_ride_driver(ride: dict, user: dict) -> bool:
+    if (ride.get("assigned_driver") or {}).get("id") == user["id"]:
+        return True
+    if (ride.get("driver_bid") or {}).get("driver_id") == user["id"]:
+        return True
+    return False
+
+
+def ensure_ride_participant(ride: dict, user: dict):
+    """Rider, assigned/bidding driver, or admin may access this ride."""
+    if user.get("role") == "admin" or is_ride_customer(ride, user) or is_ride_driver(ride, user):
+        return
+    raise HTTPException(403, "You do not have access to this ride.")
+
+
+def ensure_ride_customer(ride: dict, user: dict):
+    """Only the rider (or admin) may perform this action."""
+    if user.get("role") == "admin" or is_ride_customer(ride, user):
+        return
+    raise HTTPException(403, "Only the rider can perform this action.")
+
+
+async def ensure_thread_access(ride_id: str, user: dict):
+    """Access control for chat threads (ride chats + support-<userId> threads)."""
+    if user.get("role") == "admin":
+        return
+    if ride_id.startswith("support-"):
+        if ride_id == f"support-{user['id']}":
+            return
+        raise HTTPException(403, "You do not have access to this conversation.")
+    ride = await db.rides.find_one({"id": ride_id})
+    if not ride:
+        raise HTTPException(404, "Ride not found")
+    ensure_ride_participant(ride, user)
 
 
 # --------------------------------------------------------------------------
@@ -540,11 +586,41 @@ async def register(req: RegisterReq):
         "insurance_doc": req.insurance_doc if is_driver else None,
         "registration_doc": req.registration_doc if is_driver else None,
         "approval_status": "pending" if is_driver else "approved",
+        "email_verified": False,
+        "email_code": f"{random.randint(0, 999999):06d}",
         "online": False,
         "created_at": now_ts(),
     }
     await db.users.insert_one(user)
+    # Fire welcome / verification emails (non-blocking).
+    emailer.email_verification(user["email"], user.get("name"), user["email_code"])
+    if is_driver:
+        emailer.email_driver_application(user["email"], user.get("name"))
     return {"token": make_token(user["id"]), "user": public_user(user)}
+
+
+class VerifyEmailReq(BaseModel):
+    code: str
+
+
+@api_router.post("/auth/verify-email")
+async def verify_email(req: VerifyEmailReq, user=Depends(get_current_user)):
+    if user.get("email_verified"):
+        return {"email_verified": True}
+    if (req.code or "").strip() != str(user.get("email_code") or ""):
+        raise HTTPException(400, "Incorrect verification code.")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"email_verified": True}})
+    return {"email_verified": True}
+
+
+@api_router.post("/auth/resend-verification")
+async def resend_verification(user=Depends(get_current_user)):
+    if user.get("email_verified"):
+        return {"ok": True, "already_verified": True}
+    code = f"{random.randint(0, 999999):06d}"
+    await db.users.update_one({"id": user["id"]}, {"$set": {"email_code": code}})
+    emailer.email_verification(user["email"], user.get("name"), code)
+    return {"ok": True}
 
 
 @api_router.post("/auth/login")
@@ -690,6 +766,11 @@ async def create_ride(req: RideReq, user=Depends(get_current_user)):
         if offers:
             await db.offers.insert_many(offers)
     ride.pop("_id", None)
+    if user.get("email"):
+        when_label = "Scheduled" if ride["status"] == "scheduled" else "Now"
+        emailer.email_ride_scheduled(user["email"], user.get("name"), ride["pickup"]["label"],
+                                     ride["destination"]["label"], ride.get("scheduled_time") or when_label,
+                                     ride.get("recommended_fare", 0.0))
     return {"ride": ride}
 
 
@@ -698,11 +779,16 @@ async def get_ride(ride_id: str, user=Depends(get_current_user)):
     ride = await db.rides.find_one({"id": ride_id}, {"_id": 0})
     if not ride:
         raise HTTPException(404, "Ride not found")
+    ensure_ride_participant(ride, user)
     return {"ride": ride}
 
 
 @api_router.get("/rides/{ride_id}/offers")
 async def get_offers(ride_id: str, user=Depends(get_current_user)):
+    ride = await db.rides.find_one({"id": ride_id})
+    if not ride:
+        raise HTTPException(404, "Ride not found")
+    ensure_ride_customer(ride, user)
     cursor = db.offers.find({"ride_id": ride_id, "reveal_at": {"$lte": now_ts()}}, {"_id": 0})
     offers = await cursor.to_list(20)
     offers.sort(key=lambda o: o["fare"])
@@ -714,6 +800,7 @@ async def select_offer(ride_id: str, req: SelectReq, user=Depends(get_current_us
     ride = await db.rides.find_one({"id": ride_id})
     if not ride:
         raise HTTPException(404, "Ride not found")
+    ensure_ride_customer(ride, user)
     offer = await db.offers.find_one({"id": req.offer_id, "ride_id": ride_id}, {"_id": 0})
     if not offer:
         raise HTTPException(404, "Offer not found")
@@ -748,6 +835,10 @@ async def select_offer(ride_id: str, req: SelectReq, user=Depends(get_current_us
         "payment_status": "authorized" if auth_pi_id else "unpaid",
     }})
     ride = await db.rides.find_one({"id": ride_id}, {"_id": 0})
+    cust = await db.users.find_one({"id": ride.get("customer_id")})
+    if cust:
+        emailer.email_driver_selected(cust["email"], cust.get("name"),
+                                      assigned["name"], assigned["vehicle"], offer["fare"])
     return {"ride": ride}
 
 
@@ -756,6 +847,7 @@ async def cancel_ride(ride_id: str, user=Depends(get_current_user)):
     ride = await db.rides.find_one({"id": ride_id})
     if not ride:
         raise HTTPException(404, "Ride not found")
+    ensure_ride_participant(ride, user)
     if ride.get("status") in ("completed", "cancelled"):
         return {"ok": True, "cancellation_fee": ride.get("cancellation_fee", 0)}
     is_scheduled = ride.get("when") == "scheduled"
@@ -787,6 +879,9 @@ async def cancel_ride(ride_id: str, user=Depends(get_current_user)):
     await db.rides.update_one({"id": ride_id}, {"$set": {
         "status": "cancelled", "cancellation_fee": fee, "payment_status": "cancelled",
     }})
+    cust = await db.users.find_one({"id": ride.get("customer_id")})
+    if cust:
+        emailer.email_ride_cancelled(cust["email"], cust.get("name"), fee)
     return {"ok": True, "cancellation_fee": fee}
 
 
@@ -839,6 +934,7 @@ async def track_ride(ride_id: str, user=Depends(get_current_user)):
     ride = await db.rides.find_one({"id": ride_id})
     if not ride:
         raise HTTPException(404, "Ride not found")
+    ensure_ride_participant(ride, user)
     if ride["status"] in ("searching", "scheduled", "cancelled"):
         return {"status": ride["status"], "driver_location": (ride.get("assigned_driver") or {}).get("start"), "eta_minutes": 0,
                 "assigned_driver": ride.get("assigned_driver"), "final_fare": ride.get("final_fare"),
@@ -1042,6 +1138,8 @@ async def driver_status(ride_id: str, req: StatusReq, user=Depends(get_current_u
     ride = await db.rides.find_one({"id": ride_id}, {"_id": 0})
     if not ride:
         raise HTTPException(404, "Ride not found")
+    if user.get("role") != "admin" and not is_ride_driver(ride, user):
+        raise HTTPException(403, "Only the assigned driver can update this ride.")
     # Starting the trip requires the rider's 4-digit PIN.
     if req.status == "in_progress" and ride.get("status") == "arrived":
         expected = str(ride.get("start_pin") or "")
@@ -1070,6 +1168,7 @@ CUSTOMER_REPLIES = ["Great, thank you!", "I'm waiting outside.", "Sounds good.",
 
 @api_router.get("/rides/{ride_id}/messages")
 async def get_messages(ride_id: str, user=Depends(get_current_user)):
+    await ensure_thread_access(ride_id, user)
     cursor = db.messages.find({"ride_id": ride_id}, {"_id": 0}).sort("at", 1)
     msgs = await cursor.to_list(200)
     return {"messages": msgs}
@@ -1077,6 +1176,7 @@ async def get_messages(ride_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/rides/{ride_id}/messages")
 async def send_message(ride_id: str, req: MessageReq, user=Depends(get_current_user)):
+    await ensure_thread_access(ride_id, user)
     msg = {
         "id": str(uuid.uuid4()),
         "ride_id": ride_id,
@@ -1365,6 +1465,8 @@ async def admin_set_driver_status(driver_id: str, req: AdminStatusReq, admin=Dep
     if req.status in ("declined", "deactivated", "pending"):
         upd["online"] = False
     await db.users.update_one({"id": driver_id}, {"$set": upd})
+    if req.status == "approved":
+        emailer.email_driver_approved(d["email"], d.get("name"))
     return {"ok": True, "approval_status": req.status}
 
 
@@ -1719,7 +1821,8 @@ app.add_middleware(
 async def seed_admin():
     existing = await db.users.find_one({"email": "admin@getaride.com"})
     if not existing:
-        hashed = bcrypt.hashpw("Admin1234".encode(), bcrypt.gensalt()).decode()
+        admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin1234")
+        hashed = bcrypt.hashpw(admin_pw.encode(), bcrypt.gensalt()).decode()
         await db.users.insert_one({
             "id": str(uuid.uuid4()), "email": "admin@getaride.com", "password": hashed,
             "name": "Getaride Admin", "role": "admin", "phone": None, "photo": None,

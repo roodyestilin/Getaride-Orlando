@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only test of the OFFERS PAGE VISIBILITY bug fix on Getaride Orlando. Logged in as rider@getaride.com/Ride1234, booked a scheduled airport ride (Lake Eola -> MCO, Delta / Terminal A / 1 pax / 1 bag), and validated the SearchingSheet on /ride/[id]. The bottom sheet is now EXPANDED by default (~95% of screen) — the recommended-fare summary, ride-class banner, 'Compare driver offers' title and route box are visible at the top, and at least 2 full offer cards (driver name, vehicle text, class chip, rating, ETA, distance, car image, fare, Accept button) are visible without any drag/scroll. Progressive offers (2/5 -> 3/5 -> 4/5+) rendered smoothly. 'Cancel Request' button is anchored and visible at the bottom. Tapping Accept on an offer transitioned the sheet to the ScheduledSheet (driver locked in — Stripe card sheet was NOT shown because the seeded rider already has a saved card, which is expected behavior per code path). Bug fix verified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/ride/[id] Offers (SearchingSheet)", "issues": ["Minor: When 4-5 offers arrive, the sheet at 95% is a great default; drag DOWN to ~80% still leaves most of the sheet on-screen — this is by design per PRD but note the delta is small (~15% of height) so the drag affordance is subtle. Consider a slightly lower collapsed snap (e.g. 70%) if product wants a stronger 'peek the map' state."]}
+    ],
+    "react_native_issues": [
+      {"component": "Animated (SearchingSheet)", "issue": "Runtime warning: 'Animated: useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation.' — expected on web preview but noisy. Reference: /app/frontend/app/ride/[id].tsx:509 (Animated.spring with useNativeDriver:false is fine; warning appears from other Animated usage on web)."},
+      {"component": "shadow* style props", "issue": "React Native Web deprecation warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Reference: /app/frontend/src/theme (shadow constants used in ride/[id].tsx styles.sheet, styles.backBtn)."},
+      {"component": "pointerEvents prop", "issue": "React Native Web deprecation warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Present somewhere in the shared component tree."}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_15.json"],
+  "action_items": [
+    "None for the reported bug — the SearchingSheet visibility fix is verified.",
+    "(Optional polish) Consider lowering the collapsed snap (currently ~80%) to give a more noticeable 'shrink' when the user drags the handle down.",
+    "(Optional cleanup) Migrate shadow* style props -> boxShadow and pointerEvents prop -> style.pointerEvents to silence RN-Web deprecation warnings.",
+    "(Non-blocking) 'https://ipapi.co/json/' is called from the client and blocked by CORS in the preview domain — consider moving geo IP lookup to backend or removing it."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/ride/[id].tsx SearchingSheet: expandedH=0.95*winH and collapsedH=0.80*winH. Drag handle uses PanResponder + Animated height with useNativeDriver:false — works on web. Offer list is a flex:1 ScrollView with clear visual hierarchy. Meets the PRD.",
+    "MapView receives bottomInset={winH * 0.6} in overview mode which is smaller than the 0.95 sheet — map is effectively covered which is acceptable for this screen but the inset value is now stale vs the sheet height."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "None. Used existing seeded rider account.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth login: /auth screen — testID 'email-input' and 'password-input' resolve to WRAPPER Views (not the actual <input>). Fill by placeholder ('you@email.com') or by input[type=password], then click text 'Sign In'. Full happy-path flow to reach the offers screen: pick-time-prompt -> schedule-confirm -> destination-row -> only-mco-option -> airport-card -> airline-select -> airline-select-option-<Airline> -> airport-continue -> terminal-A/B/C -> airport-continue -> airport-continue (last step is Passengers & bags whose CTA still uses testID 'airport-continue' with label 'Find Rides') -> find-rides on Home ('Schedule Ride'). Offers appear over ~8s. Use page.locator('[data-testid=airport-continue]:visible').last to avoid clicking the hidden home CTA behind the modal. The seeded rider@getaride.com already has a saved Stripe card so tapping accept-<id> proceeds directly to the ScheduledSheet without a card sheet.",
+  "rca_of_issue": "Reported bug (offers cards barely visible) — Root cause was that the previous SearchingSheet had a low default height (was collapsed) so the offer list ScrollView had little room. Fix in /app/frontend/app/ride/[id].tsx (SearchingSheet): sheet is now an Animated.View with height starting at expandedH = round(winH*0.95) and can be dragged between collapsedH=round(winH*0.8) and expandedH via a PanResponder attached to the top handle (dragArea). Offer list is a flex:1 ScrollView so multiple cards are visible/scrollable. Verified: at 390x844 viewport, 2 full offer cards are fully visible without any drag, and Accept works."
+}

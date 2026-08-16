@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TextInput, Modal, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform, TextInput, Modal, useWindowDimensions, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -282,7 +282,7 @@ export default function CustomerHome() {
 
       <BlurView intensity={40} tint="light" style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="home-profile" onPress={() => router.push("/(customer)/account")} style={styles.profileBtn}>
-          <Ionicons name="person" size={20} color={colors.brandPrimary} />
+          <Image source={require("@/assets/images/logo-g.png")} style={styles.profileLogo} resizeMode="contain" />
         </Pressable>
         <Logo size={30} showWord showMark={false} />
         <View style={{ width: 40 }} />
@@ -785,8 +785,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
     ...shadow,
   },
+  profileLogo: { width: 28, height: 28, borderRadius: 8 },
   sheet: {
     position: "absolute",
     bottom: 0,
