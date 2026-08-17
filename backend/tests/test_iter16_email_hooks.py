@@ -19,7 +19,7 @@ import requests
 
 BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL")
             or os.environ.get("EXPO_BACKEND_URL")
-            or "https://nextjs-rebuild-8.preview.emergentagent.com").rstrip("/")
+            or "https://react-native-rides-3.preview.emergentagent.com").rstrip("/")
 
 RIDER = {"email": "rider@getaride.com", "password": "Ride1234"}
 ADMIN = {"email": "admin@getaride.com", "password": "Admin1234"}

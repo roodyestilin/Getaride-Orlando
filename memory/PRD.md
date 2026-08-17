@@ -55,6 +55,9 @@ fare marketplace (recommended fare → driver offers → pick), real-time tracki
 - Mapbox confirmed live: MapView.web.tsx uses real streets-v12 tiles + Directions API; token present in
   frontend/.env. Verified rendering (Lake Eola, Orlando streets).
 
+## Recently Completed (2026-06 fork)
+- Removed abandoned `/app/web` Next.js folder (694MB) — project uses Expo/React Native Web only. No active configs referenced it; both services verified healthy after cleanup.
+
 ## Next Tasks
 1. P1: Profile photos → object storage (currently base64 strings).
 2. P1: Push notifications (Emergent-managed) for ride requests/offer acceptances — needs deploy + build.

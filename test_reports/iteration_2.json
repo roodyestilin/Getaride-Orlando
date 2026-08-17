@@ -28,6 +28,6 @@
   "seed_data_creation": "Registered fresh test users this run: customer cust_<ts>@test.com, drivers drv_<ts>@test.com / drv2_<ts>@test.com (all with pass1234). No persistent seed needed.",
   "retest_needed": false,
   "should_main_agent_self_test": false,
-  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env (https://nextjs-rebuild-8.preview.emergentagent.com). Mobile viewport 390x844. Critical new testIDs already exercised: auth-submit, role-driver, name/email/password/vehicle/plate-input, toggle-mode, find-rides, destination-row, place-option-<label>, offer-<id>, accept-<id>, bid-<rideId>, submit-bid, advance-status, dt-chat, dt-call, dt-cancel, dt-back, nav-banner. Geolocation denial is expected on headless; default pickup is 'Lake Eola Park'. Driver bid auto-accepts ~5s; trip auto-completes ~85s after accept on the backend.",
+  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env (https://react-native-rides-3.preview.emergentagent.com). Mobile viewport 390x844. Critical new testIDs already exercised: auth-submit, role-driver, name/email/password/vehicle/plate-input, toggle-mode, find-rides, destination-row, place-option-<label>, offer-<id>, accept-<id>, bid-<rideId>, submit-bid, advance-status, dt-chat, dt-call, dt-cancel, dt-back, nav-banner. Geolocation denial is expected on headless; default pickup is 'Lake Eola Park'. Driver bid auto-accepts ~5s; trip auto-completes ~85s after accept on the backend.",
   "rca_of_issue": "N/A - no blocking bugs in this iteration."
 }
