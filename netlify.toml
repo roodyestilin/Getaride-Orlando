@@ -1,0 +1,21 @@
+# Netlify config to deploy the Getaride Orlando FULL-STACK WEB APP
+# (Expo react-native-web exported as a static website) pointed at the
+# already-deployed production backend. Connect this repo in Netlify and
+# it will build + publish automatically, then add your custom domain.
+
+[build]
+  base = "frontend"
+  command = "npx expo export --platform web --output-dir dist"
+  publish = "frontend/dist"
+
+[build.environment]
+  EXPO_PUBLIC_BACKEND_URL = "https://fullstack-web-deploy.emergent.host"
+  EXPO_PUBLIC_MAPBOX_TOKEN = "pk.eyJ1Ijoid29ybGR3aWRlcGlja3VwcyIsImEiOiJjbXFwazh5Z3gwNzMyMnNxYWJ5OW4zM3dmIn0.rZFs0Q8KrVTDjdxRPI6uLQ"
+  EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_51TxEldRmOLJtOnmbGdvZwIqBrZiqxZt3yx1hEN8yJinyu0lDnbhL2fLXFd4lIdB4f9jwa8QvrBLS8huSPRu850TZ00V7j2HKB4"
+  NODE_VERSION = "20"
+
+# SPA fallback so client-side routes (/, /auth, /admin, etc.) all load index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
