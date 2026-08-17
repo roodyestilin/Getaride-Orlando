@@ -2,7 +2,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get('EXPO_PUBLIC_BACKEND_URL', 'https://react-native-rides-3.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('EXPO_PUBLIC_BACKEND_URL', 'https://fullstack-web-deploy.preview.emergentagent.com').rstrip('/')
 
 
 @pytest.fixture(scope="session")
