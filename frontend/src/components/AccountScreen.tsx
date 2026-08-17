@@ -10,7 +10,7 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
 
-const HERO_IMG = require("@/assets/images/guest-hero.png");
+const HERO_IMG = require("@/assets/images/account-hero.png");
 
 function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) return "New";
   const months = Math.floor((Date.now() / 1000 - createdAtSec) / (30 * 24 * 3600));
@@ -43,6 +43,12 @@ export default function AccountScreen() {
           locations={[0, 0.5, 1]}
           style={styles.guestGradient}
         />
+        <View style={[styles.guestLogo, { top: insets.top + spacing.md }]} pointerEvents="none">
+          <View style={styles.guestLogoMark}>
+            <Ionicons name="car-sport" size={16} color="#fff" />
+          </View>
+          <Text style={styles.guestLogoText}>Getaride <Text style={styles.guestLogoAccent}>Orlando</Text></Text>
+        </View>
         <View style={[styles.guestBottom, { paddingBottom: insets.bottom + spacing.lg }]}>
           <Text style={styles.guestTagline}>Need a ride?{"\n"}We got you.</Text>
           <Pressable testID="guest-signin" onPress={() => router.push("/auth")} style={styles.guestCta}>
@@ -159,6 +165,10 @@ const styles = StyleSheet.create({
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
   guestRoot: { flex: 1, backgroundColor: "#000" },
+  guestLogo: { position: "absolute", left: spacing.xl, flexDirection: "row", alignItems: "center", gap: 8, zIndex: 5 },
+  guestLogoMark: { width: 32, height: 32, borderRadius: 10, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  guestLogoText: { fontFamily: font.bold, fontSize: 18, color: "#fff", textShadowColor: "rgba(0,0,0,0.45)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  guestLogoAccent: { color: colors.brandSecondary },
   guestGradient: { position: "absolute", left: 0, right: 0, bottom: 0, height: "70%" },
   guestBottom: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.xl, gap: spacing.md },
   guestTagline: { fontFamily: font.bold, fontSize: 34, lineHeight: 38, color: "#fff", marginBottom: spacing.xs },
