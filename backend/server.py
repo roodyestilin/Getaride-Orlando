@@ -1288,12 +1288,18 @@ async def inbox(user=Depends(get_current_user)):
     rides = await db.rides.find(q, {"_id": 0}).sort("created_at", -1).to_list(100)
     deletes = await db.conversation_deletes.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
     del_map = {d["ride_id"]: d["deleted_at"] for d in deletes}
+    # Batch-fetch the latest message per ride in ONE query (avoids N+1).
+    ride_ids = [r["id"] for r in rides]
+    last_by_ride = {}
+    if ride_ids:
+        msgs = await db.messages.find({"ride_id": {"$in": ride_ids}}, {"_id": 0}).sort("at", 1).to_list(10000)
+        for _m in msgs:
+            last_by_ride[_m["ride_id"]] = _m  # ascending sort → last write is the latest
     convos = []
     for r in rides:
-        last = await db.messages.find({"ride_id": r["id"]}, {"_id": 0}).sort("at", -1).to_list(1)
-        if not last:
+        m = last_by_ride.get(r["id"])
+        if not m:
             continue
-        m = last[0]
         d_at = del_map.get(r["id"])
         if d_at and m["at"] <= d_at:
             continue
@@ -1395,13 +1401,30 @@ async def admin_overview(admin=Depends(require_admin)):
 async def admin_conversations(admin=Depends(require_admin)):
     ride_ids = await db.messages.distinct("ride_id")
     out = []
+    if not ride_ids:
+        return {"conversations": out}
+    # Batch-fetch all messages, users, and rides in a few queries (avoids N+1).
+    all_msgs = await db.messages.find({"ride_id": {"$in": list(ride_ids)}}, {"_id": 0}).sort("at", 1).to_list(50000)
+    msgs_by_ride = {}
+    for _m in all_msgs:
+        msgs_by_ride.setdefault(_m["ride_id"], []).append(_m)
+    support_uids = [str(rid).split("support-", 1)[1] for rid in ride_ids if str(rid).startswith("support-")]
+    normal_ids = [rid for rid in ride_ids if not str(rid).startswith("support-")]
+    users_map = {}
+    if support_uids:
+        for _u in await db.users.find({"id": {"$in": support_uids}}, {"_id": 0}).to_list(5000):
+            users_map[_u["id"]] = _u
+    rides_map = {}
+    if normal_ids:
+        for _r in await db.rides.find({"id": {"$in": normal_ids}}, {"_id": 0}).to_list(5000):
+            rides_map[_r["id"]] = _r
     for rid in ride_ids:
-        msgs = await db.messages.find({"ride_id": rid}, {"_id": 0}).sort("at", 1).to_list(500)
+        msgs = msgs_by_ride.get(rid)
         if not msgs:
             continue
         if str(rid).startswith("support-"):
             uid = str(rid).split("support-", 1)[1]
-            u = await db.users.find_one({"id": uid}, {"_id": 0})
+            u = users_map.get(uid)
             out.append({
                 "ride_id": rid,
                 "customer_name": (u or {}).get("name") or "User",
@@ -1412,7 +1435,7 @@ async def admin_conversations(admin=Depends(require_admin)):
                 "last_at": msgs[-1]["at"],
             })
             continue
-        ride = await db.rides.find_one({"id": rid}, {"_id": 0})
+        ride = rides_map.get(rid)
         out.append({
             "ride_id": rid,
             "customer_name": (ride or {}).get("customer_name") or "Rider",
