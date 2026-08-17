@@ -3,11 +3,13 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
-import { colors, font } from "@/src/theme";
+import { font } from "@/src/theme";
+import { useTheme } from "@/src/theme-context";
 import { useAuth } from "@/src/auth";
 
 export default function CustomerLayout() {
   const { user } = useAuth();
+  const { colors } = useTheme();
   return (
     <Tabs
       screenListeners={{ tabPress: () => Haptics.selectionAsync().catch(() => {}) }}

@@ -8,11 +8,24 @@ import { useFonts } from "expo-font";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/auth";
+import { ThemeProvider, useTheme } from "@/src/theme-context";
 import AppSplash from "@/src/components/AppSplash";
 
 LogBox.ignoreAllLogs(true);
 
 SplashScreen.preventAutoHideAsync();
+
+function ThemedRoot({ splashDone, onSplashDone }: { splashDone: boolean; onSplashDone: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <AuthProvider>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
+        <Stack.Screen name="chat/[id]" options={{ presentation: "modal", gestureEnabled: false }} />
+      </Stack>
+      {!splashDone ? <AppSplash onDone={onSplashDone} /> : null}
+    </AuthProvider>
+  );
+}
 
 export default function RootLayout() {
   const [iconsLoaded, iconErr] = useIconFonts();
@@ -38,12 +51,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#fff" } }}>
-            <Stack.Screen name="chat/[id]" options={{ presentation: "modal", gestureEnabled: false }} />
-          </Stack>
-          {!splashDone ? <AppSplash onDone={() => setSplashDone(true)} /> : null}
-        </AuthProvider>
+        <ThemeProvider>
+          <ThemedRoot splashDone={splashDone} onSplashDone={() => setSplashDone(true)} />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

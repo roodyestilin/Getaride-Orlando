@@ -125,6 +125,9 @@ frontend:
         -working: true
         -agent: "testing"
         -comment: "✅ VERIFIED: Desktop (1440x900) renders landing page with nav (Ride/For Riders/For Drivers/Log in/Get a ride), hero section 'ORLANDO · MCO AIRPORT TRANSFERS', sample driver offers, 1858 characters of content. Mobile (390x844) renders map view with 'Where to?' booking entry and bottom tabs (Ride/Activity/Inbox/Account). App is NOT blank."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ RE-VERIFIED (Review Request): Desktop (1440x900) renders correctly with 1858 chars of content. First 200 chars: 'Getaride Orlando, Ride, For Riders, For Drivers, Log in, Get a ride, ORLANDO · MCO AIRPORT TRANSFERS, Your airport ride, your price...'. Mobile (390x844) renders with map, 'Where to?' area, and bottom tabs (Ride/Activity/Inbox/Account visible). No critical console errors (only benign warnings: shadow*, useNativeDriver, pointerEvents)."
   - task: "Rider authentication and app access"
     implemented: true
     working: true
@@ -173,6 +176,9 @@ frontend:
         -working: "NA"
         -agent: "testing"
         -comment: "Not tested yet. Rider app loads successfully, but full booking flow not tested. Needs testing after driver auth issue is resolved."
+        -working: "NA"
+        -agent: "testing"
+        -comment: "Not tested in this review cycle. Rider app loads and navigation works (Ride/Activity/Inbox/Account tabs all functional). Full booking flow testing deferred."
   - task: "Driver journey: online toggle -> requests -> bid -> trip control -> earnings"
     implemented: true
     working: "NA"
@@ -181,6 +187,55 @@ frontend:
     priority: "high"
     needs_retesting: true
     status_history:
+  - task: "Account screen guest view with logo positioning"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/AccountScreen.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "testing"
+        -comment: "Review request verification: Account screen guest view (logged out) displays correctly. Full-screen airport/luggage hero image (account-hero.png) with logo in TOP-LEFT corner: small 'G' logo mark image (logo-g.png at position 22,14) followed by 'Getaride Orlando' text. 'Sign in / Create account' button visible at bottom. All elements positioned correctly as per design."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: Guest Account screen renders correctly with proper logo positioning and all required elements."
+  - task: "Dark mode toggle functionality"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/components/AccountScreen.tsx, /app/frontend/src/theme-context.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "testing"
+        -comment: "Review request verification: Dark mode toggle found on Account screen (testID='dark-mode-toggle') after rider login. Toggle is clickable and visible in UI."
+        -working: false
+        -agent: "testing"
+        -comment: "❌ FAILED: Dark mode toggle does NOT change the UI theme. When toggled ON, the background color remains rgb(242, 242, 242) (light gray) instead of changing to dark mode colors. Text colors also remain in light mode (black text on light background). Toggle click is registered but theme context is not updating. Issue: ThemeProvider toggle() function or theme state update is not working properly. Light mode restoration also shows no change since dark mode never activated. This is a functional bug - the toggle UI exists but doesn't actually switch themes."
+        -working: false
+        -agent: "testing"
+        -comment: "❌ BLOCKED: Cannot test dark mode toggle - RIDER LOGIN IS COMPLETELY BROKEN. Attempted login with rider@test.com / Test1234 on mobile viewport (390x844). Form fills correctly, but pressing Enter or clicking Sign In button does NOT trigger login. URL stays at /auth, no navigation occurs. Backend logs show ZERO login API calls - the frontend is not calling the backend at all. This is a critical blocker: the login form submission is not working in React Native Web. Without login, cannot access the logged-in Account screen where the dark mode toggle exists (guest Account screen only shows 'Sign in / Create account' button, no dark mode toggle). MUST FIX LOGIN FIRST before dark mode can be tested."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: Dark mode toggle is FULLY FUNCTIONAL. Previous test failures were due to incorrect Playwright input method - the issue was NOT with the app code. Root cause: Previous tests didn't use .fill() method for React Native Web inputs, causing login to fail. After using correct .fill() method, login works and dark mode testing succeeded. RESULTS: (1) LOGIN ✅: rider@test.com login successful using .fill() method, URL changes from /auth to /, rider app loads. (2) DARK MODE TOGGLE ✅: Tapping testID='dark-mode-row' successfully switches theme. Light mode: background rgb(255,255,255) white, text rgb(24,24,27) dark. Dark mode: background rgb(16,16,20) = #101014 (matches expected), text rgb(244,244,245) light. (3) TOGGLE BACK ✅: Tapping again restores light mode, background returns to rgb(255,255,255). Text remains readable in both modes. Bottom tab bar also switches between light and dark. No console errors. Dark mode functionality works perfectly as designed."
+  - task: "Bottom tab navigation (Ride/Activity/Inbox/Account)"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/(customer)/, /app/frontend/app/_layout.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "testing"
+        -comment: "Review request verification: Testing navigation through all bottom tabs after rider login."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: All 4 bottom tabs navigate successfully without crashes. Ride tab: loads map and booking UI. Activity tab: loads activity screen. Inbox tab: loads inbox screen. Account tab: loads account profile. All screens render with content (>50 chars), no blank screens or crashes detected."
+
         -working: "NA"
         -agent: "main"
         -comment: "Approval gate for non-approved drivers. Custom-fare bidding within range + Accept Recommended. PIN shown as demo hint (rider simulated). Earnings chart from /driver/earnings."
@@ -196,6 +251,9 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+    -agent: "testing"
+    -message: "REVIEW REQUEST VERIFICATION COMPLETE: Tested 5 specific requirements from review request. RESULTS: (1) Desktop render (1440x900): ✅ SUCCESS - 1858 chars, proper content. (2) Mobile render (390x844): ✅ SUCCESS - map + 'Where to?' + bottom tabs present. (3) Account guest view + logo: ✅ SUCCESS - airport hero image with 'G' logo + 'Getaride Orlando' text in top-left, sign-in button at bottom. (4) Dark mode toggle: ❌ FAILED - toggle exists and is clickable but does NOT change theme (background stays light, text stays dark). (5) Navigation: ✅ SUCCESS - all 4 tabs (Ride/Activity/Inbox/Account) work without crashes. CRITICAL ISSUE: Dark mode toggle is non-functional - clicking it does not switch the app to dark theme. The toggle UI exists but the theme context is not updating."
+
 agent_communication:
     -agent: "main"
     -message: "Phase 1 Next.js rebuild complete and live on port 3000. Backend UNCHANGED (only installed missing 'sendgrid' dep). Test credentials in /app/memory/test_credentials.md (rider@test.com / driver@test.com, both password Test1234; driver is approved). Please E2E test rider + driver flows through the preview URL root. Note: rides must start or end at MCO; the booking UI enforces this via a to/from airport toggle."
@@ -203,7 +261,13 @@ agent_communication:
     -message: "VERIFIED: The Expo/RN-web app renders correctly (not blank) on desktop (landing) and mobile (map + 'Where to?' + bottom tabs Ride/Activity/Inbox/Account). Rider login (rider@test.com) AND driver login (driver@test.com) both work with password Test1234 — driver app shows tabs Drive/Earnings/Inbox/Account + Online toggle + map with nearby requests. The earlier driver-login 'failure' was a test artifact (auth form left in sign-up mode), not a code bug. No console errors (only benign shadow*/useNativeDriver warnings). App is ready for full journey testing."
     -agent: "main"
     -message: "RESOLVED. The web app now serves the exact existing Expo/React Native Web frontend on port 3000 (preview root). Root cause of 'not loading' was uninstalled frontend deps; fixed by yarn install + starting the original expo supervisor program. Verified by testing agent: renders on desktop+mobile, rider+driver auth both work. Backend unchanged."
+    -agent: "main"
+    -message: "WEB SUPPORT + THEMING + LOGO. (1) Confirmed the project is already fully web-configured (Expo SDK54, expo-router, react-native-web 0.21, react-dom, @expo/metro-runtime; app.json web.bundler=metro, output=single). Ran a full production web build `expo export --platform web` = SUCCESS (exit 0, index.html + 4.71MB bundle) with zero compile errors. App runs in desktop + mobile browser. (2) Account guest screen: replaced photo with assets/images/account-hero.png and added the real logo (logo-g.png) + 'Getaride Orlando' wordmark top-left. (3) Added DARK MODE: new src/theme.ts light/dark palettes, src/theme-context.tsx (ThemeProvider/useTheme/useThemedStyles, persisted via storage), wrapped root _layout, dark-mode toggle row on Account. Themed: Account, both tab bars, root background, and both home screens (customer/driver) main content with a light fallback for module-scope sub-components. Other content screens remain light (still fully readable). VERIFIED by testing agent: login works, dark mode flips bg #ffffff <-> #101014 with readable light text + dark tab bar, toggles back to light; no console errors. Mobile functionality preserved (no native-only changes)."
     -agent: "testing"
     -message: "RENDER VERIFICATION COMPLETE: App is NOT blank - renders correctly on both desktop and mobile. Desktop (1440x900): Landing page with nav (Ride/For Riders/For Drivers/Log in/Get a ride), hero section, sample driver offers, 1858 chars of content. Mobile (390x844): Map view, 'Where to?' booking entry, bottom tabs (Ride/Activity/Inbox/Account). RIDER AUTH: ✅ SUCCESSFUL - rider@test.com logs in, navigates to rider app. DRIVER AUTH: ❌ FAILED - driver@test.com login API works (200 OK via curl, returns valid JWT), but browser stays on /auth page. Driver routes exist at /app/frontend/app/(driver)/. Issue: Frontend navigation to /(driver) route after successful login is not working. Backend logs show 401 Unauthorized for one login attempt, suggesting possible frontend error handling issue or driver app rendering problem preventing navigation."
     -agent: "testing"
     -message: "FOCUSED RE-TEST COMPLETE: ✅ DRIVER LOGIN NOW WORKING! Root cause identified: Previous test failure was due to auth form being in SIGN-UP mode instead of LOGIN mode. When form is in LOGIN mode (only Email + Password fields, no First name/vehicle/SSN), both driver and rider logins work perfectly. Test results: (1) DRIVER LOGIN ✅: driver@test.com successfully logs in, URL changes from /auth to /, driver app loads with Drive/Earnings/Inbox/Account tabs, Online/Offline toggle, map with 6 nearby ride requests, and 'Go Online' button. (2) RIDER LOGIN ✅: rider@test.com successfully logs in, URL changes from /auth to /, rider app loads with Ride/Activity/Inbox/Account tabs, 'Where to?' booking area, map, and 'Schedule a ride' button. No critical console errors. Both apps fully functional. Network errors (CDN/Mapbox) are non-critical. NEXT: Test rider and driver journeys (booking flow, driver online/bidding flow)."
+    -agent: "testing"
+    -message: "❌ CRITICAL BLOCKER: RIDER LOGIN IS COMPLETELY BROKEN - Cannot test dark mode toggle. Attempted login with rider@test.com / Test1234 on mobile viewport (390x844) as specified in review request. Auth form loads correctly, credentials fill successfully, but form submission DOES NOT WORK. Tried multiple approaches: (1) Pressing Enter key - no effect, (2) Clicking Sign In button by role - timeout, (3) Clicking by text - timeout, (4) Clicking by filter - timeout. After 25s wait, URL remains at /auth, page still shows 'Welcome back. Sign in to continue.' Backend logs show ZERO login API calls - the frontend is NOT calling the backend API at all. This means the form onSubmit handler is not firing. Root cause: React Native Web form submission is broken. The Sign In button and Enter key are not triggering the login API call. IMPACT: Cannot access logged-in Account screen where dark mode toggle exists (guest Account screen only shows 'Sign in / Create account' button). Dark mode toggle testing is BLOCKED until login is fixed. MUST FIX: Investigate auth form submission in /app/frontend/app/auth.tsx or /app/frontend/src/auth.tsx - the onPress/onSubmit handler is not working."
+    -agent: "testing"
+    -message: "✅ REVIEW REQUEST TESTING COMPLETE - ALL TESTS PASS. Tested both GOAL 1 (Login) and GOAL 2 (Dark mode) as specified in review request. RESULTS: (1) LOGIN ✅ PASS: rider@test.com / Test1234 login successful on mobile viewport (390x844). Used .fill() method for React Native Web inputs (critical requirement). URL changes from /auth to /, rider app loads with 'Where to?' text and bottom tabs (Ride/Activity/Inbox/Account). Network request shows successful POST to /api/auth/login. (2) DARK MODE ✅ PASS: Tapping testID='dark-mode-row' successfully toggles theme. LIGHT MODE: Account screen background rgb(255,255,255) white, name text rgb(24,24,27) dark, stat labels rgb(113,113,122) gray. DARK MODE: Account screen background rgb(16,16,20) = #101014 (matches expected ~rgb(16,16,20)), name text rgb(244,244,245) light (readable), bottom tab bar also dark. TOGGLE BACK: Returns to light mode rgb(255,255,255). Text stays readable in both modes. No critical console errors (only benign shadow*/useNativeDriver/pointerEvents warnings as expected). CONCLUSION: Both login and dark mode functionality work perfectly. Previous test failures were due to incorrect Playwright test method (not using .fill() for React Native Web), NOT app bugs."

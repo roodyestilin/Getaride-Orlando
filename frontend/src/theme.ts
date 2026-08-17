@@ -1,4 +1,4 @@
-export const colors = {
+export const lightColors = {
   surface: "#ffffff",
   onSurface: "#18181b",
   surfaceSecondary: "#f4f4f5",
@@ -22,6 +22,37 @@ export const colors = {
   borderStrong: "#a1a1aa",
   divider: "#f4f4f5",
 };
+
+export const darkColors: typeof lightColors = {
+  surface: "#101014",
+  onSurface: "#f4f4f5",
+  surfaceSecondary: "#1a1a1f",
+  onSurfaceSecondary: "#d4d4d8",
+  surfaceTertiary: "#26262c",
+  onSurfaceTertiary: "#a1a1aa",
+  surfaceInverse: "#f4f4f5",
+  onSurfaceInverse: "#18181b",
+  brand: "#a855f7",
+  brandPrimary: "#a855f7",
+  onBrandPrimary: "#ffffff",
+  brandSecondary: "#c084fc",
+  brandTertiary: "#2c2140",
+  onBrandTertiary: "#e9d5ff",
+  success: "#22c55e",
+  onSuccess: "#ffffff",
+  warning: "#fbbf24",
+  error: "#f87171",
+  muted: "#8a8a93",
+  border: "#2a2a30",
+  borderStrong: "#3f3f46",
+  divider: "#232327",
+};
+
+export type Palette = typeof lightColors;
+
+// Backward-compatible default palette. Screens that haven't been migrated to the
+// theme context still import `colors` and render in light mode (fully readable).
+export const colors = lightColors;
 
 export const spacing = {
   xs: 4,

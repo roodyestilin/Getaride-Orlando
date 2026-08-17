@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, Switch, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,11 +8,14 @@ import Avatar from "@/src/components/Avatar";
 import Button from "@/src/components/Button";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
-import { colors, font, radius, shadowSoft, spacing } from "@/src/theme";
+import { font, radius, shadowSoft, spacing, Palette } from "@/src/theme";
+import { useTheme, useThemedStyles } from "@/src/theme-context";
 
 const HERO_IMG = require("@/assets/images/account-hero.png");
+const LOGO_MARK = require("@/assets/images/logo-g.png");
 
-function memberDuration(createdAtSec?: number): string {  if (!createdAtSec) return "New";
+function memberDuration(createdAtSec?: number): string {
+  if (!createdAtSec) return "New";
   const months = Math.floor((Date.now() / 1000 - createdAtSec) / (30 * 24 * 3600));
   if (months < 1) return "New";
   if (months < 12) return `${months} mo`;
@@ -24,6 +27,8 @@ export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
   const { user, signOut } = useAuth();
+  const { colors, isDark, toggle } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [profile, setProfile] = useState<{ total_rides: number; rating: number; created_at?: number } | null>(null);
 
   useEffect(() => {
@@ -44,9 +49,7 @@ export default function AccountScreen() {
           style={styles.guestGradient}
         />
         <View style={[styles.guestLogo, { top: insets.top + spacing.md }]} pointerEvents="none">
-          <View style={styles.guestLogoMark}>
-            <Ionicons name="car-sport" size={16} color="#fff" />
-          </View>
+          <Image source={LOGO_MARK} style={styles.guestLogoMark} resizeMode="contain" />
           <Text style={styles.guestLogoText}>Getaride <Text style={styles.guestLogoAccent}>Orlando</Text></Text>
         </View>
         <View style={[styles.guestBottom, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -118,6 +121,22 @@ export default function AccountScreen() {
         ))}
       </View>
 
+      <Pressable testID="dark-mode-row" onPress={toggle} style={styles.linkRow}>
+        <View style={styles.rowIcon}>
+          <Ionicons name={isDark ? "moon" : "sunny"} size={18} color={colors.brandPrimary} />
+        </View>
+        <Text style={styles.linkLabel}>Dark mode</Text>
+        <View pointerEvents="none">
+          <Switch
+            testID="dark-mode-toggle"
+            value={isDark}
+            onValueChange={toggle}
+            trackColor={{ true: colors.brandPrimary, false: colors.borderStrong }}
+            thumbColor="#ffffff"
+          />
+        </View>
+      </Pressable>
+
       {user.role === "customer" ? (
         <>
           <Pressable testID="account-edit-profile" onPress={() => router.push("/edit-profile")} style={styles.linkRow}>
@@ -143,7 +162,7 @@ export default function AccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   head: { alignItems: "center", gap: spacing.xs, marginBottom: spacing.lg },
   name: { fontFamily: font.bold, fontSize: 22, color: colors.onSurface },
@@ -154,8 +173,6 @@ const styles = StyleSheet.create({
   statValue: { fontFamily: font.bold, fontSize: 20, color: colors.onSurface },
   statLabel: { fontFamily: font.regular, fontSize: 12, color: colors.muted },
   statSep: { width: 1, height: 34, backgroundColor: colors.border },
-  ratingPill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surfaceSecondary, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
-  ratingText: { fontFamily: font.monoBold, fontSize: 13, color: colors.onSurface },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft, paddingHorizontal: spacing.lg },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 56 },
   rowIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
@@ -165,8 +182,8 @@ const styles = StyleSheet.create({
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, height: 60, marginTop: spacing.lg, paddingHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadowSoft },
   linkLabel: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.onSurface },
   guestRoot: { flex: 1, backgroundColor: "#000" },
-  guestLogo: { position: "absolute", left: spacing.xl, flexDirection: "row", alignItems: "center", gap: 8, zIndex: 5 },
-  guestLogoMark: { width: 32, height: 32, borderRadius: 10, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  guestLogo: { position: "absolute", left: spacing.xl, flexDirection: "row", alignItems: "center", gap: 10, zIndex: 5 },
+  guestLogoMark: { width: 34, height: 34, borderRadius: 10 },
   guestLogoText: { fontFamily: font.bold, fontSize: 18, color: "#fff", textShadowColor: "rgba(0,0,0,0.45)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   guestLogoAccent: { color: colors.brandSecondary },
   guestGradient: { position: "absolute", left: 0, right: 0, bottom: 0, height: "70%" },

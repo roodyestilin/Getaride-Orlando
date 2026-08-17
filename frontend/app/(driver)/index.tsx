@@ -11,7 +11,8 @@ import MapView from "@/src/components/MapView";
 import { api } from "@/src/api";
 import { unlockSpeech } from "@/src/speech";
 import { playRequestChime, unlockSound } from "@/src/sound";
-import { colors, font, radius, shadow, shadowSoft, spacing } from "@/src/theme";
+import { colors, font, radius, shadow, shadowSoft, spacing , Palette } from "@/src/theme";
+import { useTheme, useThemedStyles } from "@/src/theme-context";
 
 function RequestPopup({ req, secsLeft, bottom, onSkip, onBid }: any) {
   const anim = useRef(new Animated.Value(0)).current;
@@ -90,6 +91,8 @@ function RequestPopup({ req, secsLeft, bottom, onSkip, onBid }: any) {
 }
 
 export default function DriverHome() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const [online, setOnline] = useState(false);
   const [approval, setApproval] = useState<string>("approved");
@@ -418,7 +421,7 @@ export default function DriverHome() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginBottom: spacing.lg },
   onlinePill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, height: 36, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
@@ -493,3 +496,6 @@ const styles = StyleSheet.create({
   fareBig: { fontFamily: font.monoBold, fontSize: 40, color: colors.onSurface },
   fareHint: { fontFamily: font.regular, fontSize: 12, color: colors.muted },
 });
+
+// Light fallback for module-scope sub-components (themed screens use useThemedStyles)
+const styles = makeStyles(colors);

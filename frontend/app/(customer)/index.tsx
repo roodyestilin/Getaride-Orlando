@@ -14,7 +14,8 @@ import Logo from "@/src/components/Logo";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { storage } from "@/src/utils/storage";
-import { colors, font, radius, shadow, spacing } from "@/src/theme";
+import { colors, font, radius, shadow, spacing , Palette } from "@/src/theme";
+import { useTheme, useThemedStyles } from "@/src/theme-context";
 
 const DEFAULT_PICKUP: LatLng = { lat: 28.5439, lng: -81.3729, label: "Lake Eola Park" };
 const PENDING_RIDE_KEY = "pendingRide";
@@ -39,6 +40,8 @@ const AIRLINES = [
 ];
 
 export default function CustomerHome() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { height: winH } = useWindowDimensions();
   const { user } = useAuth();
@@ -764,7 +767,7 @@ function AirportDetailsModal({ visible, fromAirport, step, setStep, airline, set
 }
 
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: "#eef1f4" },
   header: {
     position: "absolute",
@@ -903,3 +906,6 @@ const styles = StyleSheet.create({
   bagsBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary },
   bagsCount: { fontFamily: font.bold, fontSize: 18, color: colors.onSurface, minWidth: 28, textAlign: "center" },
 });
+
+// Light fallback for module-scope sub-components (themed screens use useThemedStyles)
+const styles = makeStyles(colors);
